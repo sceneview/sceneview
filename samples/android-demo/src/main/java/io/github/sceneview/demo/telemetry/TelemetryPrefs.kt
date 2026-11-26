@@ -13,7 +13,7 @@ import androidx.core.content.edit
  * Notifications default to **off**: push is opt-in, turned on by the pre-prompt (the system
  * permission on Android 13+, "Notify me" below) or by the switch. No FCM token exists before that.
  */
-class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore, ConsentStore {
+class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore, PushCadenceStore, ConsentStore {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -61,6 +61,11 @@ class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore, Cons
         get() = prefs.getBoolean(KEY_SETTLED, false)
         set(value) = prefs.edit { putBoolean(KEY_SETTLED, value) }
 
+    override var pushPostedAt: List<Long>
+        get() = prefs.getString(KEY_PUSH_POSTED_AT, null).orEmpty()
+            .split(',').mapNotNull { it.trim().toLongOrNull() }
+        set(value) = prefs.edit { putString(KEY_PUSH_POSTED_AT, value.joinToString(",")) }
+
     private companion object {
         const val FILE = "sceneview_demo_telemetry"
         const val KEY_CONSENT_STATE = "consent_state"
@@ -75,5 +80,6 @@ class TelemetryPrefs(context: Context) : PushPromptStore, PushDisableStore, Cons
         const val KEY_TIMES_SHOWN = "push_prompt_times_shown"
         const val KEY_SNOOZED_UNTIL = "push_prompt_snoozed_until"
         const val KEY_SETTLED = "push_prompt_settled"
+        const val KEY_PUSH_POSTED_AT = "push_posted_at"
     }
 }

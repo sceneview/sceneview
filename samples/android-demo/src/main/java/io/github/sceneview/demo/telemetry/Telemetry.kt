@@ -1,8 +1,6 @@
 package io.github.sceneview.demo.telemetry
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -16,7 +14,6 @@ import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
-import io.github.sceneview.demo.R
 import java.util.concurrent.Executors
 
 /**
@@ -112,6 +109,13 @@ object Telemetry {
     @Volatile
     private var consentAnsweredThisSession: Boolean = false
 
+    /**
+     * The consent sheet is owed, or was answered in this process: an ask already happened in this
+     * session ([SessionAsks]), so the team card waits for a later one.
+     */
+    val consentAskedThisSession: Boolean
+        get() = consentPending || consentAnsweredThisSession
+
     /** Push on and off; null until Firebase started. */
     @Volatile
     private var push: PushSwitch? = null
@@ -132,7 +136,7 @@ object Telemetry {
             Log.i(TAG, "No Firebase config in this build: analytics and push are off.")
             return
         }
-        createChannel(app)
+        DemoPushNotifier.ensureChannel(app)
         startFirebaseIfNeeded(app)
         syncPush(app)
         refreshUserProperties(app)
@@ -153,6 +157,12 @@ object Telemetry {
     private val background by lazy { Executors.newSingleThreadExecutor() }
 
     fun promptStore(context: Context): PushPromptStore {
+        ensureInit(context)
+        return requireNotNull(prefs)
+    }
+
+    /** When broadcast pushes were posted, for [PushCadence]. */
+    fun pushCadenceStore(context: Context): PushCadenceStore {
         ensureInit(context)
         return requireNotNull(prefs)
     }
@@ -365,19 +375,6 @@ object Telemetry {
     internal fun <T> initializeFirebase(app: Context, collecting: Boolean, initialize: () -> T): T {
         if (!collecting) FirebaseLeftovers.clear(app)
         return initialize()
-    }
-
-    private fun createChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        runCatching {
-            val manager = context.getSystemService(NotificationManager::class.java) ?: return
-            val channel = NotificationChannel(
-                CHANNEL_WHATS_NEW,
-                context.getString(R.string.notification_channel_whats_new),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply { description = context.getString(R.string.notification_channel_whats_new_description) }
-            manager.createNotificationChannel(channel)
-        }
     }
 
     private fun topics(context: Context): List<String> =

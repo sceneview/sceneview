@@ -3,7 +3,7 @@ package io.github.sceneview.demo.telemetry
 /**
  * The demo app's analytics taxonomy — every event the app may log, with its exact name and
  * parameters. The shared events match the iOS demo; coordinate changes to those names there.
- * Android only: support `entry_source`, `home`/`menu` shown sources, purchase launched/pending
+ * Android only: `team_card`, support `entry_source`, `home`/`menu` shown sources, purchase launched/pending
  * events, and the `tier_tiny`,
  * `purchase_cancelled`, `purchase_failed`, `purchase_already_owned`, `purchase_pending` and
  * `open_collective` support results.
@@ -134,6 +134,15 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("campaign" to campaign, "sample_id" to sampleId)
     }
 
+    /**
+     * The "Your team ships SceneView?" card ([io.github.sceneview.demo.teamcard.TeamCard]):
+     * `shown` once when the Home card appears, `mail` from the card or the About row,
+     * `dismissed` from the card. Android only.
+     */
+    data class TeamCard(val action: TeamCardAction, val surface: TeamCardSurface) : AnalyticsEvent("team_card") {
+        override fun rawParams() = mapOf("action" to action.value, "surface" to surface.value)
+    }
+
     data class SettingsChanged(val key: String, val value: String) : AnalyticsEvent("settings_changed") {
         override fun rawParams() = mapOf("key" to key, "value" to value)
     }
@@ -213,6 +222,19 @@ enum class PromptResult(val value: String) {
     Granted("granted"),
     Denied("denied"),
     NotNow("not_now"),
+}
+
+/** What happened to the team card, for `team_card.action`. */
+enum class TeamCardAction(val value: String) {
+    Shown("shown"),
+    Mail("mail"),
+    Dismissed("dismissed"),
+}
+
+/** Where the team card was, for `team_card.surface`. */
+enum class TeamCardSurface(val value: String) {
+    Home("home"),
+    About("about"),
 }
 
 /** How the support sheet was opened, for `support_prompt_shown.source`. */

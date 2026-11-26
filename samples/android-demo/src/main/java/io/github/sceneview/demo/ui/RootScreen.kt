@@ -115,6 +115,10 @@ import io.github.sceneview.demo.telemetry.NotificationsSettingsRow
 import io.github.sceneview.demo.telemetry.OpenSource
 import io.github.sceneview.demo.telemetry.SCREEN_CLASS_TAB
 import io.github.sceneview.demo.telemetry.SearchSurface
+import io.github.sceneview.demo.telemetry.SessionAsks
+import io.github.sceneview.demo.telemetry.TeamCardSurface
+import io.github.sceneview.demo.teamcard.AboutTeamRow
+import io.github.sceneview.demo.teamcard.TeamCard
 import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.telemetry.UsageStatisticsSettingsRow
 import io.github.sceneview.demo.telemetry.logOutboundLink
@@ -163,7 +167,10 @@ fun RootScreen(
     var galleryOpen by rememberSaveable { mutableStateOf(false) }
     var supportEntry by rememberSaveable { mutableStateOf<SupportSheetMode?>(null) }
     supportEntry?.let { mode ->
-        LaunchedEffect(mode) { SupportPrompt.clearValueMoment() }
+        LaunchedEffect(mode) {
+            SupportPrompt.clearValueMoment()
+            SessionAsks.onSupportShown()
+        }
         SupportSheet(mode = mode, onDismiss = { supportEntry = null })
     }
 
@@ -242,14 +249,18 @@ fun RootScreen(
     // moment of value once the user is back here — never on the AR View tab, never over a
     // live AR session or another sheet. The short wait lets the screen settle first, so the
     // sheet does not ride in on the back transition from the sample.
+    // Nor in a session where the team card or the notification pre-prompt already asked: one ask
+    // per session (telemetry/SessionAsks.kt).
     val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive &&
-        !whatsNewSinceSheet.isShown && supportEntry == null
+        !whatsNewSinceSheet.isShown && supportEntry == null && !SessionAsks.teamCardShown &&
+        !SessionAsks.pushPromptShown
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
         delay(SUPPORT_PROMPT_SETTLE_MILLIS)
         SupportPrompt.maybeShow(canShow = true)
     }
     if (SupportPrompt.isShown && canAskForSupport) {
+        LaunchedEffect(Unit) { SessionAsks.onSupportShown() }
         SupportSheet(
             mode = SupportSheetMode.Prompt,
             onDismiss = SupportPrompt::dismiss,
@@ -411,6 +422,12 @@ fun RootScreen(
                         },
                     )
                 } else {
+                    // "Your team ships SceneView?" (teamcard/TeamCard.kt): decided each time
+                    // Home comes back, so the 3rd sample closed can bring it in.
+                    LaunchedEffect(Unit) {
+                        TeamCard.onHome(consentAskedThisSession = Telemetry.consentAskedThisSession)
+                    }
+                    val teamCardContext = LocalContext.current
                     HomeScreen(
                         demos = rememberListedDemos(),
                         query = query,
@@ -429,6 +446,9 @@ fun RootScreen(
                         onMenuSupportClick = { supportEntry = SupportSheetMode.Menu },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
+                        showTeamCard = TeamCard.homeVisible,
+                        onTeamCardMail = { TeamCard.mail(teamCardContext, TeamCardSurface.Home) },
+                        onTeamCardDismiss = TeamCard::dismiss,
                     )
                 }
                 RootTab.ArView -> ArViewTabContent(
@@ -631,6 +651,10 @@ private fun AboutTabContent(onSupportClick: () -> Unit, statusBand: Dp = 0.dp) {
                 AboutRowDivider()
                 NotificationsSettingsRow()
             }
+        }
+        // "Your team ships SceneView?": permanent, under Privacy & notifications, in every build.
+        AboutGroup(title = stringResource(R.string.about_group_teams)) {
+            AboutTeamRow(onClick = { TeamCard.mail(context, TeamCardSurface.About) })
         }
         AboutGroup(title = stringResource(R.string.about_group_legal)) {
             AboutActionRow(

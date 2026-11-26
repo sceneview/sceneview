@@ -1,15 +1,8 @@
 package io.github.sceneview.demo.telemetry
 
-import android.Manifest
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import io.github.sceneview.demo.BuildConfig
@@ -22,8 +15,11 @@ import io.github.sceneview.demo.R
  * is in the background — so the notification is built here and a push is never silently
  * swallowed while the user is looking at the app.
  *
- * Payload contract (shared with iOS and the send script): `title`, `body` (or a `notification`
- * block), `sample` = a demo id to open, `campaign` = a label logged in `push_opened`.
+ * Payload contract (shared with iOS and `tools/send-demo-push.py`): `title`, `body` (or a
+ * `notification` block), `sample` = a demo id to open, `campaign` = a label logged in
+ * `push_opened`. Send data-only to Android, so this runs, the opt-outs and the 2-a-month
+ * cadence ([PushCadence]) apply, and the tap opens `sample` even when the app was in the
+ * background.
  */
 class DemoMessagingService : FirebaseMessagingService() {
 
@@ -45,39 +41,22 @@ class DemoMessagingService : FirebaseMessagingService() {
     }
 
     private fun show(context: Context, message: RemoteMessage) {
-        Telemetry.ensureInit(context)
-        if (!Telemetry.notificationsEnabled) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
         val data = message.data
         val title = message.notification?.title ?: data["title"] ?: context.getString(R.string.push_default_title)
         val body = message.notification?.body ?: data["body"] ?: context.getString(R.string.push_default_body)
-        val tap = PushIntent.forTap(
+        // Every opt-out (switch, permission, `whats_new` channel off) and the 2-a-month cadence
+        // are checked in DemoPushNotifier: a refused push builds nothing.
+        DemoPushNotifier.post(
             context,
-            sample = data[PushIntent.KEY_SAMPLE],
-            campaign = data[PushIntent.KEY_CAMPAIGN],
+            DemoPushNotifier.Content(
+                title = title,
+                body = body,
+                sample = data[PushIntent.KEY_SAMPLE],
+                campaign = data[PushIntent.KEY_CAMPAIGN],
+                key = message.messageId ?: title,
+            ),
+            broadcast = PushCadence.counts(message.from),
         )
-        val pending = PendingIntent.getActivity(
-            context,
-            (message.messageId ?: title).hashCode(),
-            tap,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(context, Telemetry.CHANNEL_WHATS_NEW)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(ContextCompat.getColor(context, R.color.md_theme_primary))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setAutoCancel(true)
-            .setContentIntent(pending)
-            .build()
-        @Suppress("MissingPermission") // checked above on API 33+; granted at install below it
-        NotificationManagerCompat.from(context).notify((message.messageId ?: title).hashCode(), notification)
     }
 
     private companion object {

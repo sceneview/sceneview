@@ -70,9 +70,13 @@ fun PushPromptHost(returnedHomeFromSample: Int, onHome: Boolean) {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
                     Telemetry.systemAllowsNotifications(context)
                 )
-        // Never while the usage-statistics consent is owed, nor in the session that answered it.
-        if (!showing && policy.onReturnedHome(eligible, Telemetry.consentAllowsPushPrompt())) {
+        // Never while the usage-statistics consent is owed, nor in the session that answered it,
+        // nor in the one the team card showed in (SessionAsks): the return still counts, and the
+        // sheet waits for a later session.
+        val consentAndCardSettled = Telemetry.consentAllowsPushPrompt() && !SessionAsks.teamCardShown
+        if (!showing && policy.onReturnedHome(eligible, consentAndCardSettled)) {
             policy.onShown()
+            SessionAsks.onPushPromptShown()
             Telemetry.analytics.log(AnalyticsEvent.PushPromptShown)
             showing = true
         }

@@ -251,6 +251,14 @@
     <string name="consent_dont_share">Don\'t share</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_supporting">New samples and releases, a few times a month at most.</string>
+    <!-- "Your team ships SceneView?" (teamcard/TeamCard.kt): an in-app card, never a push.
+         Verbatim from the "Used in" docs (sceneview#5280): no price, no paid offer, no service. -->
+    <string name="team_card_title">Your team ships SceneView?</string>
+    <string name="team_card_body">Tell us your app\'s name. It goes into the Used in list once you\'ve approved the line, and you can reach the maintainer directly when something breaks.</string>
+    <string name="team_card_mail">Email us</string>
+    <string name="team_card_dismiss">Dismiss</string>
+    <string name="team_card_no_mail_app">No email app on this device. Write to %1$s.</string>
+    <string name="about_group_teams">For teams</string>
     <string name="push_prompt_title">Get notified when new samples land</string>
     <string name="push_prompt_body">A short note when a new sample or a release ships, a few times a month at most. You can turn it off in About › Privacy &amp; notifications at any time.</string>
     <string name="push_prompt_notify_me">Notify me</string>
