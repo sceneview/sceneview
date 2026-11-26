@@ -77,4 +77,17 @@ class ViewerEnvelopeFramingTest {
         )
         assertEquals(expected, actual)
     }
+
+    @Test
+    fun `a huge subject stays inside the far plane`() {
+        val framing = viewerEnvelopeFraming(
+            AnimationEnvelope(listOf(Box(0f, 0f, 0f, 2000f, 3000f, 2000f))), Position(), 411f, 914f,
+            96f, 128f, fov, pitchDegrees = 25f,
+        )!!
+        assertEquals(DemoMath.MAX_VIEWER_DISTANCE, framing.distance, 0f)
+        val (x, y, z) = framing.eyeOffset
+        val (tx, ty, tz) = framing.targetOffset
+        val eyeToTarget = kotlin.math.sqrt((x - tx) * (x - tx) + (y - ty) * (y - ty) + (z - tz) * (z - tz))
+        assertEquals(DemoMath.MAX_VIEWER_DISTANCE, eyeToTarget, 0.5f)
+    }
 }

@@ -45,17 +45,21 @@ internal fun viewerEnvelopeFraming(
         fitMode = FitMode.Silhouette,
         animationEnvelope = envelope,
     ) ?: return null
+    // Same ceiling as DemoMath.viewerFraming: past it the subject would sit beyond the far plane.
+    val distance = fit.distance.coerceIn(DemoMath.MIN_VIEWER_DISTANCE, DemoMath.MAX_VIEWER_DISTANCE)
+    val fitEye = if (distance == fit.distance) fit.eye
+    else fit.target + (fit.eye - fit.target) * (distance / fit.distance)
 
     val halfTan = tan(Math.toRadians(fov) / 2.0).toFloat()
     val bandOffset = ((top - bottom) / 2f) / (height / 2f)
-    val shift = bandOffset * fit.distance * halfTan
+    val shift = bandOffset * distance * halfTan
     val shiftVector = Position(0f, shift * cosPitch, -shift * sinPitch)
     val target = fit.target + shiftVector
-    val eye = fit.eye + shiftVector
+    val eye = fitEye + shiftVector
     val targetOffset = target - center
     val eyeOffset = eye - center
     return DemoMath.ViewerFraming(
-        distance = fit.distance,
+        distance = distance,
         targetOffset = Triple(targetOffset.x, targetOffset.y, targetOffset.z),
         eyeOffset = Triple(eyeOffset.x, eyeOffset.y, eyeOffset.z),
     )

@@ -57,7 +57,13 @@ internal fun resolveAutoFraming(
     var hasStaticContent = false
 
     fun visit(node: Node, skippedRenderables: Set<Node> = emptySet()) {
-        if (!node.isVisible || node in skippedRenderables) return
+        if (!node.isVisible) return
+        // A qualifying model's own renderables are not classified again, but whatever an app
+        // parents under them (geometry, another model) still is: it renders too.
+        if (node in skippedRenderables) {
+            node.childNodes.forEach { visit(it, skippedRenderables) }
+            return
+        }
         val model = node as? ModelNode
         val qualifyingModel = model?.takeIf {
             runCatching { it.skinCount > 0 && it.animationCount > 0 }.getOrDefault(false)
