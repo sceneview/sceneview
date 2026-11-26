@@ -91,9 +91,8 @@ jobs:
           - { api: 29, heap: 16, versions: "4.72.0 4.72.0-oomfix" }
           - { api: 26, heap: 24, versions: "4.72.0" }
           - { api: 26, heap: 32, versions: "4.72.0" }
-          # The emulator dies silently once Filament starts under swiftshader_indirect: try the other software renderers.
-          - { api: 29, heap: 16, versions: "4.72.0", gpu: swangle_indirect }
-          - { api: 29, heap: 16, versions: "4.72.0", gpu: guest }
+          # Second software renderer, in case swangle_indirect misbehaves on the oldest image.
+          - { api: 26, heap: 16, versions: "4.72.0 4.72.0-oomfix", gpu: guest }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -116,8 +115,10 @@ jobs:
           api-level: ${{ matrix.api }}
           target: ${{ matrix.target || 'google_apis' }}
           arch: x86_64
+          # swiftshader_indirect crashes the emulator (no output, a crashpad dump) about 15 s after
+          # Filament starts rendering; swangle_indirect and guest do not.
           # No heap-size here: it writes hw.heapSize, which the emulator ignores. ci-trials.sh sets the limit.
-          emulator-options: -no-window -gpu ${{ matrix.gpu || 'swiftshader_indirect' }} -no-snapshot -noaudio -no-boot-anim -verbose
+          emulator-options: -no-window -gpu ${{ matrix.gpu || 'swangle_indirect' }} -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           # Each line runs in its own `sh -c`: keep every command on one line.
           script: |

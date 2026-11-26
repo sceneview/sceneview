@@ -57,7 +57,7 @@ for v in $VERSIONS; do
     fi
     step "trial $v #$t"
     REPRO_TSV="$tsv" timeout 300 bash "$HERE/run-trial.sh" "$apk" 0 "$OUT/logcat-$v-$t.txt" 60 || diag "trial $v #$t ended with rc=$?"
-    IFS=$'\t' read -r _ oom frame vis drain peak rot max < "$tsv" || true
+    IFS=$'\x1f' read -r _ oom frame vis drain peak rot max < "$tsv" || true
     echo "| $API | $HEAP | $v | $t | ${max:-?} | ${oom:-?} | ${frame:-} | ${drain:-} | ${vis:-none} | ${peak:-} | ${rot:-} |" >> "$OUT/results.md"
   done
 done

@@ -2,7 +2,8 @@
 # usage: run-trial.sh <apk> <budgetMiB> <out.txt> [wait=40]
 # One trial: launch, rotate to landscape once the first engine exists, wait, then read logcat.
 # budgetMiB 0 = no ballast (the emulator's own heap limit does the work, e.g. dalvik.vm.heapgrowthlimit=16m).
-# Prints one summary line. With REPRO_TSV set, also appends a tab-separated row to that file:
+# Prints one summary line. With REPRO_TSV set, also appends a row to that file, fields separated by
+# the ASCII unit separator (0x1f) so that empty fields survive `read`:
 #   apk  oom  oom_frame  visible  drain_ms  peak_kib  rotations  max_mib
 # Every adb call is bounded: a device that drops off must end the trial, not hang the job.
 SERIAL=${ANDROID_SERIAL:-emulator-5554}; APK=$1; B=$2; OUT=$3; W=${4:-40}
@@ -32,6 +33,8 @@ peak=$(grep REPRO_HEAP "$OUT" | grep -o "peakNoBallast=[0-9]*" | tail -1)
 max=$(grep -o "maxMemory=[0-9]*" "$OUT" | head -1)
 rot=$(grep -c "activity onDestroy" "$OUT"); echo "rotations=$rot $(basename "$APK") budget=$B oom=$oom $at visible=[$vis] $drain $peak $max"
 if [ -n "$REPRO_TSV" ]; then
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(basename "$APK")" "$oom" "${at#at }" "${vis% }" "$(echo "$drain" | grep -o '[0-9]*')" "${peak#peakNoBallast=}" "$rot" "${max#maxMemory=}" >> "$REPRO_TSV"
+  printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' "$(basename "$APK")" "$oom" "${at#at }" "${vis% }" "$(echo "$drain" | grep -o '[0-9]*')" "${peak#peakNoBallast=}" "$rot" "${max#maxMemory=}" >> "$REPRO_TSV"
 fi
+# Stop the app before turning back to portrait, so that rotation never shows up in the next trial.
+a 30 shell am force-stop repro.mavlab
 a 30 shell settings put system user_rotation 0
