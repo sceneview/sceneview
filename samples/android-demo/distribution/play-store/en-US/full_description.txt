@@ -4,6 +4,7 @@ SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, Sw
 
 START HERE
 
+- Ask in AR (beta) — ask out loud where to hang a picture, whether a 2 m sofa fits or how to bleed a radiator, and the answer is drawn in your room, on the real walls and floor. Answers are prepared ones, picked on your phone from what you ask; measurements are approximate, and questions are in English for now.
 - The home — a featured model in a live 3D scene. Open it to turn it around on screen, or place it in your room at its real size.
 - Matter — press a slab of memory foam, gel, velvet, leather, marble or brushed steel. Foam sinks under your finger and comes back slowly, steel does not move, and your phone's vibration changes with each material.
 - Cosmos — a galaxy, a particle collision, a flow field and a ringed star system, joined by a camera tour that flies you through them. Touch the screen to take the camera back.
@@ -28,7 +29,11 @@ github.com/sceneview/sceneview
 
 PRIVACY
 
-No account, no ads, no cross-app tracking. Your models and the camera feed are processed on your device — the camera is used only for AR, and nothing it sees is uploaded. A scan you record is saved on your device, until you delete it or share it yourself. The app sends usage statistics and crash reports (Firebase), never linked to your identity, to decide what to improve next — you can turn them off in About › Privacy & notifications. Beyond that, two things reach the network, and only when you ask for them: searching the online model galleries, and the handful of samples that host an anchor with Google's ARCore cloud service.
+No account, no ads, no cross-app tracking. Models are rendered on your device. A scan you record stays on your device until you delete it; sharing sends a copy you choose.
+
+The app sends usage statistics and crash reports through Firebase, which uses an app-installation identifier, to decide what to improve next. Turn both off in About › Privacy & notifications.
+
+Some features use the network: browsing and downloading online models, the HD model pack (downloaded on Wi-Fi), downloads of on-device AI models, a streamed demo video, optional notifications and app updates. The cloud AR samples (Cloud Anchors, Geospatial, Streetscape) send visual data, and for Geospatial your location, to Google's ARCore service. Ask in AR listens through your phone's speech recognition, which may send your voice to its provider, and the object-labelling sample uses Google's ML Kit, which may send its own diagnostics to Google.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview
