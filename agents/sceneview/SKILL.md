@@ -34,8 +34,8 @@ Android (Jetpack Compose), web, and Compose Multiplatform desktop are maintained
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.74.0` and
-  `io.github.sceneview:arsceneview:4.74.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.75.0` and
+  `io.github.sceneview:arsceneview:4.75.0`.
 - **Apple (iOS / macOS / visionOS), end of life at 4.68.0** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
   via Swift Package Manager (tag `4.68.0`). RealityKit renderer.

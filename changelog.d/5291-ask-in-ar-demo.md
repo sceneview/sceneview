@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- Demo app: **Ask in AR** (beta). Ask a question out loud and the answer writes itself on your wall in handwriting, measured on the real room: a level line for a painting, the footprint of a sofa on the floor, the steps to bleed a radiator. Answers are scripted and measured on device; an optional proxy (`tools/ask-ar-proxy`) streams live answers that use a camera snapshot, detected plane measurements, the phone's time and approximate weather. An answer stays on screen when tracking drops and goes back on the wall when it resumes.

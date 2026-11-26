@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v4.75.0 — 2026-11-26
+
+### Added
+
+- Demo app: **Ask in AR** (beta). Ask a question out loud and the answer writes itself on your wall in handwriting, measured on the real room: a level line for a painting, the footprint of a sofa on the floor, the steps to bleed a radiator. Answers are scripted and measured on device; an optional proxy (`tools/ask-ar-proxy`) streams live answers that use a camera snapshot, detected plane measurements, the phone's time and approximate weather. An answer stays on screen when tracking drops and goes back on the wall when it resumes.
+
+### Changed
+
+- **Dependabot no longer proposes Compose BOM 2026.11 or later.** Those BOMs bring Compose 1.13, which needs compileSdk 37.1 and would force every app using SceneView onto 37.1; the bump waits until 37.1 is common ([#5260](https://github.com/sceneview/sceneview/pull/5260)).
+
+### Fixed
+
+- Thanks to @davidgarciaanton for [#820](https://github.com/sceneview/sceneview/pull/820), [#821](https://github.com/sceneview/sceneview/pull/821), [#2574](https://github.com/sceneview/sceneview/pull/2574) and [#2978](https://github.com/sceneview/sceneview/pull/2978).
+
 ## v4.74.0 — 2026-11-25
 
 ### Added
