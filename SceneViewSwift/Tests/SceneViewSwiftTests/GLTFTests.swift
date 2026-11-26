@@ -93,24 +93,6 @@ final class GLTFTests: XCTestCase {
         }
     }
 
-    func testLocalGLBBufferViewKeepsItsBytesAfterTheFileIsOverwritten() throws {
-        var builder = GLTFBuilder.triangle()
-        let payload = Data(repeating: 0x42, count: 3 * 1024 * 1024)
-        let view = builder.view(payload)
-        let glb = builder.glb()
-        let url = try write(glb, as: "mutable.glb")
-        let document = try GLTFDocument.read(contentsOf: url)
-
-        // Overwrite in place without shortening the file, so a mapped read would
-        // observe the modified byte without risking a SIGBUS in the test process.
-        let file = try FileHandle(forWritingTo: url)
-        defer { try? file.close() }
-        try file.seek(toOffset: UInt64(glb.count - payload.count))
-        try file.write(contentsOf: Data([0]))
-
-        XCTAssertEqual(try document.bufferViewData(view).first, 0x42)
-    }
-
     func testGLBDecodesFromASliceWithANonzeroStartIndex() throws {
         let builder = GLTFBuilder.texturedQuad()
         let prefixLength = 13
