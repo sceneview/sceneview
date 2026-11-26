@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## v4.76.0 — 2026-11-26
+
+### Added
+
+- **Demo: "Your team ships SceneView?"** A permanent row in About, and a Home card shown once (from the 5th launch and the 3rd sample opened, never in the same session as another prompt), invite teams whose app uses SceneView to get listed in "Used in" and to reach the maintainer at hello@sceneview.dev. The demo's "What's new" pushes now post nothing while their channel is off in system settings, and at most two topic pushes a month reach a phone ([#5292](https://github.com/sceneview/sceneview/pull/5292)).
+
+### Changed
+
+- `ModelNode` logs a warning when two live nodes show the same `ModelInstance`: they move the same entities and draw a ghost. `llms.txt` now states the rule: one instance per node, `rememberModelInstance` per node or `createInstancedModel(…, count)` for copies (#5272).
+- Demo apps (Android, iOS): analytics no longer record purchases. The `support_prompt_purchase_launched` and `support_prompt_purchase_pending` events are gone, with their `product_id`, and the support sheet's result no longer names an amount or a payment outcome (`tier_*`, `purchase_*`). A visit to the store sheet now reads `store`, whatever happened there.
+
+### Fixed
+
+- A model load that runs out of Java heap while reading its file no longer crashes the app. It waits for the loads abandoned by a rotation to end, reads once more, and if the heap still has no room it logs the failure and the model does not show. An abandoned load also stops sooner and no longer keeps the whole GLB reachable while gltfio begins its resources (#5271, reported on Android 8 with a 16 MiB heap).
+- `DimensionMarks`: with `heightOffset`, the height line no longer runs up through the depth tag. The tag now stands outside whichever line is further out (#5272).
+
+### Docs
+
+- Website: the home page and the companies page now list Wikiloc and Forty, confirmed by their teams on November 25, 2026, as the README already does.
+- Demo store privacy: the Play Data safety answers and their explanation, the App Store description and the privacy policy now match what the 4.75.0 demo does — ARCore's app-activity data also serves app functionality, ML Kit's own diagnostics and Streetscape are named, speech recognition is explained, and the iOS description lists every feature that uses the network. Purchase history is declared on both stores while the 4.75.0 analytics still record in-app purchases.
+
 ## v4.75.0 — 2026-11-26
 
 ### Added

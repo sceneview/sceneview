@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **Demo: "Your team ships SceneView?"** A permanent row in About, and a Home card shown once (from the 5th launch and the 3rd sample opened, never in the same session as another prompt), invite teams whose app uses SceneView to get listed in "Used in" and to reach the maintainer at hello@sceneview.dev. The demo's "What's new" pushes now post nothing while their channel is off in system settings, and at most two topic pushes a month reach a phone ([#5292](https://github.com/sceneview/sceneview/pull/5292)).
