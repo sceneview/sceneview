@@ -769,8 +769,8 @@ class ModelLoader(
         if (!settled) {
             Log.w(TAG, "Abandoned loads still running after $ABANDONED_LOAD_WAIT_MS ms; trying $fileLocation again anyway")
         }
-        // Best effort: what the abandoned loads held is unreachable now, not yet collected.
-        Runtime.getRuntime().gc()
+        // What the abandoned loads held is unreachable now. No explicit GC: ART runs a full
+        // collection itself before it throws OutOfMemoryError on the retry's allocation.
         return try {
             step()
         } catch (outOfMemory: OutOfMemoryError) {
