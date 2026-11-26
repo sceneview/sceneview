@@ -134,10 +134,11 @@ final class SupportStore: ObservableObject {
     func purchase(_ product: Product, analytics: SupportPromptAnalyticsSession) async {
         guard purchaseState != .purchasing(product.id) else { return }
         purchaseState = .purchasing(product.id)
-        // Only that the App Store sheet opened: never which amount, nor how it ended.
-        analytics.recordStoreOpened()
         do {
             let result = try await product.purchase()
+            // StoreKit handled it, so its sheet opened. Only that is logged: never which
+            // amount, nor how it ended. A throw (StoreKit unavailable) logs nothing.
+            analytics.recordStoreOpened()
             switch result {
             case .success(let verification):
                 switch verification {
