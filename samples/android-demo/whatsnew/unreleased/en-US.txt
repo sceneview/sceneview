@@ -1,0 +1,3 @@
+- Steadier on phones with little memory: a large model that runs out of room while you rotate the screen no longer closes the app.
+- Your team ships SceneView? A card on Home and a row in About let you get your app listed in "Used in".
+- At most two "What's new" notifications a month, and none while you have turned them off in system settings.
