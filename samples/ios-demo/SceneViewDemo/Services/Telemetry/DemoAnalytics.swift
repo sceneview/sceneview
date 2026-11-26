@@ -129,29 +129,12 @@ enum SupportPromptSource: String, Sendable, CaseIterable {
     case auto, settings
 }
 
-/// The final answer for one display of the support sheet.
+/// The final answer for one display of the support sheet. No case names an amount or says
+/// whether a payment went through: `store` only says the App Store sheet opened.
 enum SupportPromptResult: String, Sendable, CaseIterable {
-    case tierSmall = "tier_small"
-    case tierMedium = "tier_medium"
-    case tierLarge = "tier_large"
-    case purchaseCancelled = "purchase_cancelled"
-    case purchaseFailed = "purchase_failed"
+    case store
     case notNow = "not_now"
     case never, dismissed
-
-    fileprivate var isCompletedPurchase: Bool {
-        self == .tierSmall || self == .tierMedium || self == .tierLarge
-    }
-
-    static func completedPurchase(productId: String) -> SupportPromptResult? {
-        guard let tier = productId.split(separator: ".").last else { return nil }
-        switch tier {
-        case "small": return .tierSmall
-        case "medium": return .tierMedium
-        case "large": return .tierLarge
-        default: return nil
-        }
-    }
 }
 
 extension AnalyticsEvent {
@@ -261,7 +244,7 @@ final class SupportPromptAnalyticsSession {
     private let log: (AnalyticsEvent) -> Void
     private var didShow = false
     private var didClose = false
-    private var purchaseResult: SupportPromptResult?
+    private var storeOpened = false
 
     init(source: SupportPromptSource,
          log: @escaping (AnalyticsEvent) -> Void = { DemoAnalytics.shared.log($0) }) {
@@ -275,17 +258,17 @@ final class SupportPromptAnalyticsSession {
         log(.supportPromptShown(source: source))
     }
 
-    /// Remembers a StoreKit answer; the event waits until the sheet actually closes.
-    func recordPurchaseResult(_ result: SupportPromptResult) {
-        guard didShow, !didClose, purchaseResult?.isCompletedPurchase != true else { return }
-        purchaseResult = result
+    /// The App Store sheet opened for one of the amounts. Which one, and how it ended, stay out.
+    func recordStoreOpened() {
+        guard didShow, !didClose else { return }
+        storeOpened = true
     }
 
-    /// Explicit prompt answers win over a preceding cancelled or failed purchase attempt.
+    /// An explicit answer wins over an earlier visit to the App Store sheet.
     func close(result: SupportPromptResult? = nil) {
         guard didShow, !didClose else { return }
         didClose = true
-        log(.supportPromptResult(result ?? purchaseResult ?? .dismissed))
+        log(.supportPromptResult(result ?? (storeOpened ? .store : .dismissed)))
     }
 }
 

@@ -208,20 +208,13 @@ final class DemoAnalyticsTests: XCTestCase {
     }
 
     func testSupportPromptResultTaxonomy() {
-        let expected = [
-            "tier_small", "tier_medium", "tier_large", "purchase_cancelled",
-            "purchase_failed", "not_now", "never", "dismissed",
-        ]
+        let expected = ["store", "not_now", "never", "dismissed"]
         XCTAssertEqual(SupportPromptResult.allCases.map(\.rawValue), expected)
         for result in SupportPromptResult.allCases {
             let event = AnalyticsEvent.supportPromptResult(result)
             XCTAssertEqual(event.name, "support_prompt_result")
             XCTAssertEqual(event.params, ["result": .string(result.rawValue)])
         }
-        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.small"), .tierSmall)
-        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.medium"), .tierMedium)
-        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.large"), .tierLarge)
-        XCTAssertNil(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.unknown"))
     }
 
     func testSupportPromptDisplayLogsExactlyOneShownAndResult() {
@@ -230,13 +223,16 @@ final class DemoAnalyticsTests: XCTestCase {
             let session = SupportPromptAnalyticsSession(source: .auto) { events.append($0) }
             session.shown()
             session.shown()
-            if result == .notNow || result == .never {
-                session.close(result: result)
-            } else {
-                if result != .dismissed { session.recordPurchaseResult(result) }
+            switch result {
+            case .store:
+                session.recordStoreOpened()
                 session.close()
+            case .dismissed:
+                session.close()
+            default:
+                session.close(result: result)
             }
-            session.recordPurchaseResult(.purchaseFailed)
+            session.recordStoreOpened()
             session.close(result: .never)
 
             XCTAssertEqual(events, [
@@ -246,15 +242,23 @@ final class DemoAnalyticsTests: XCTestCase {
         }
     }
 
-    func testCompletedSupportTierWinsOverLaterCallbacks() {
+    func testOpeningTheStoreSeveralTimesIsOneStoreResult() {
         var events: [AnalyticsEvent] = []
         let session = SupportPromptAnalyticsSession(source: .settings) { events.append($0) }
         session.shown()
-        session.recordPurchaseResult(.purchaseFailed)
-        session.recordPurchaseResult(.tierMedium)
-        session.recordPurchaseResult(.purchaseCancelled)
+        session.recordStoreOpened()
+        session.recordStoreOpened()
         session.close()
-        XCTAssertEqual(events.last, .supportPromptResult(.tierMedium))
+        XCTAssertEqual(events, [.supportPromptShown(source: .settings), .supportPromptResult(.store)])
+    }
+
+    func testAnExplicitAnswerWinsOverAnEarlierStoreVisit() {
+        var events: [AnalyticsEvent] = []
+        let session = SupportPromptAnalyticsSession(source: .auto) { events.append($0) }
+        session.shown()
+        session.recordStoreOpened()
+        session.close(result: .notNow)
+        XCTAssertEqual(events.last, .supportPromptResult(.notNow))
     }
 
     func testOutboundTargets() {

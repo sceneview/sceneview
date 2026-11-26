@@ -23,7 +23,6 @@ import com.android.billingclient.api.consumePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.telemetry.SupportResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -81,7 +80,6 @@ object SupportBilling : PurchasesUpdatedListener {
     private var client: BillingClient? = null
     private var appContext: Context? = null
     private var connectJob: Job? = null
-    private val analyticsSessions = mutableMapOf<String, SupportPromptAnalyticsSession>()
 
     /**
      * Called each time the sheet or the interstitial opens. A client that is not connected —
@@ -158,21 +156,17 @@ object SupportBilling : PurchasesUpdatedListener {
         val details = prices[tier.productId] ?: return
         outcome = null
         inFlight = tier.productId
-        analyticsSessions[tier.productId] = analytics
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
                 listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).build()),
             )
             .build()
-        analytics.purchaseLaunched(tier.productId)
         val result = billing.launchBillingFlow(activity, params)
-        if (result.responseCode != BillingResponseCode.OK) {
+        if (result.responseCode == BillingResponseCode.OK) {
+            analytics.storeOpened()
+        } else {
             Log.w(TAG, "launchBillingFlow: ${result.responseCode} ${result.debugMessage}")
             inFlight = null
-            analyticsSessions[tier.productId]?.purchaseResult(supportBillingFailure(result.responseCode))
-            if (result.responseCode != BillingResponseCode.ITEM_ALREADY_OWNED) {
-                analyticsSessions.remove(tier.productId)
-            }
             if (supportBillingUnavailable(result.responseCode)) {
                 availability = Availability.Unavailable
             } else if (result.responseCode == BillingResponseCode.ITEM_ALREADY_OWNED) {
@@ -186,17 +180,10 @@ object SupportBilling : PurchasesUpdatedListener {
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {
         val list = purchases.orEmpty().toList()
         scope.launch {
-            val attemptedProduct = inFlight
             inFlight = null
             when (result.responseCode) {
                 BillingResponseCode.OK -> handle(list, silent = false)
                 else -> {
-                    attemptedProduct?.let { productId ->
-                        analyticsSessions[productId]?.purchaseResult(supportBillingFailure(result.responseCode))
-                        if (result.responseCode != BillingResponseCode.ITEM_ALREADY_OWNED) {
-                            analyticsSessions.remove(productId)
-                        }
-                    }
                     when (result.responseCode) {
                         BillingResponseCode.BILLING_UNAVAILABLE, BillingResponseCode.FEATURE_NOT_SUPPORTED -> {
                             availability = Availability.Unavailable
@@ -216,10 +203,7 @@ object SupportBilling : PurchasesUpdatedListener {
         for (purchase in ours) {
             when (purchase.purchaseState) {
                 Purchase.PurchaseState.PURCHASED -> consume(purchase, silent)
-                Purchase.PurchaseState.PENDING -> {
-                    purchase.products.forEach { productId -> analyticsSessions[productId]?.purchasePending(productId) }
-                    if (!silent) report(Outcome.Pending)
-                }
+                Purchase.PurchaseState.PENDING -> if (!silent) report(Outcome.Pending)
                 else -> Unit
             }
         }
@@ -227,24 +211,13 @@ object SupportBilling : PurchasesUpdatedListener {
 
     private suspend fun consume(purchase: Purchase, silent: Boolean) {
         val billing = client ?: return
-        val tier = SupportTier.entries.firstOrNull { it.productId in purchase.products }
         val result = billing.consumePurchase(ConsumeParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build())
         if (result.billingResult.responseCode == BillingResponseCode.OK) {
             SupportPrompt.onSupported()
             // A purchase found at start-up (a pending payment Play confirmed while the
             // app was closed) is consumed quietly: no sheet pops up on its own to thank.
-            tier?.let { completed ->
-                analyticsSessions.remove(completed.productId)?.purchaseResult(completed.analyticsResult)
-            }
             if (!silent) report(Outcome.Thanks)
         } else {
-            if (!silent) {
-                tier?.let { failed ->
-                    analyticsSessions.remove(failed.productId)?.purchaseResult(
-                        SupportResult.PurchaseFailed,
-                    )
-                }
-            }
             report(Outcome.Failed)
             Log.w(TAG, "consume: ${result.billingResult.responseCode} ${result.billingResult.debugMessage}")
         }
