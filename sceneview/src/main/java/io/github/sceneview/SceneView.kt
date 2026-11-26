@@ -761,7 +761,13 @@ fun SceneView(
 
     val contentRoot = remember(engine) { Node(engine) }
     DisposableEffect(contentRoot) {
-        onDispose { contentRoot.destroy() }
+        onDispose {
+            // Whatever is still parented here belongs to someone else (the 2.x `childNodes` list
+            // of Compat2xChildNodes, which never destroys them): detach it so destroying the root
+            // does not destroy a node the caller may show again. Content nodes destroy themselves.
+            contentRoot.clearChildNodes()
+            contentRoot.destroy()
+        }
     }
     val autoCenterState = remember { SceneAutoCenterState() }
 
