@@ -4937,14 +4937,29 @@ environment it was copied from, never the copy.
 
 ## Remember Helpers Reference
 
-All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
+The `remember*` helpers create and memoize Filament objects, destroying scene resources on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
+
+**`rememberEngine()` lifetime (Android):** with its default `eglContextCreator` and `engineCreator`,
+every call acquires the same process-wide Filament engine, created lazily on the main thread.
+Each composition releases its reference on disposal; the engine and its EGL context remain alive
+even when the reference count reaches zero. Some Adreno drivers leak a KGSL draw context for each
+new EGL context that renders to a window surface, exhausting the driver after about 200 screen
+opens (#5202). Reusing the engine avoids that context churn for both SurfaceView and TextureView.
+Views (including their SDK color gradings), renderers, swap chains, scenes, loaders, models,
+materials, environments and nodes still release their own resources when they leave composition.
+Do not call `destroy()` or `safeDestroy()` on the default engine. Passing either custom factory,
+for example `rememberEngine(engineCreator = { createEngine(it) })`, opts that call into a separate
+owned engine and EGL context, released with the existing backend-idle teardown on disposal.
+Resources can be shared between scenes using the default engine, but their owning helpers must
+outlive all consumers. This lifetime change applies to Android; other platforms keep their own
+engine lifecycle.
 
 **Ownership on key change:** the keyed async loaders destroy the **previously produced** object automatically. `rememberHDREnvironment` and `rememberKTXEnvironment` retain that previous environment while its replacement loads, then publish the complete skybox + indirect-light pair together and destroy the replaced resources; rapid changes cancel or discard superseded results, so the latest request wins without a black frame. They return `null` only during the first load (or if that initial load fails); a failed replacement keeps the current environment. `rememberModelInstance` still returns `null` for a new path while it loads. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
-| `rememberEngine()` | `Engine` | Root Filament object — one per process |
+| `rememberEngine()` | `Engine` | Shared per process by default, retained at zero users; either custom creator opts into an owned engine |
 | `rememberModelLoader(engine)` | `ModelLoader` | Loads glTF/GLB models |
 | `rememberMaterialLoader(engine)` | `MaterialLoader` | Creates material instances |
 | `rememberEnvironmentLoader(engine)` | `EnvironmentLoader` | Loads HDR/KTX environments |
@@ -5721,7 +5736,8 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
 - **Compose**: use `remember` for Position/Rotation/Scale — no allocations in composition body.
-- **Engine**: create one `rememberEngine()` at app level, share across all scenes.
+- **Engine (Android)**: default `rememberEngine()` calls already share one engine per process,
+  retained between screens. Hoist loaders or other resources only when they should also be shared.
 - **Startup**: call `EngineWarmUp.start()` (any thread) a little before a 3D screen — or in `Application.onCreate()` when the first screen is 3D — and the first `rememberEngine()` / `rememberModelLoader()` no longer load Filament's native libraries, create the shared EGL context or build gltfio's Basis Universal transcoder tables inside their composition: the warm-up does all three on a background thread, and `rememberEngine()` only builds the `Engine`, which Filament ties to the main thread. **Opt-in** — nothing starts it on its own. Without code, list `io.github.sceneview.EngineWarmUpInitializer` under `androidx.startup.InitializationProvider` in the app manifest. A prepared context no engine takes within 5 s is released. Started at app startup it competes with the app's own startup (Pixel 10 Pro XL: 3D first frame 194 → 151 ms, time to first frame 134 → 149 ms), so when the 3D screen is not the first one, start it after the first frame instead. `rememberModelLoader(engine)` is cheap too: gltfio's material provider is built by the loader's first model. Keep model creation out of a screen's first frame with `rememberModelInstance` or the `suspend` `loadModelInstance` / `loadInstancedModel` instead of `createModel*` / `createInstancedModel` in `remember { }`.
 - **AR**: disable `planeRenderer` after object placement to reduce overdraw.
 - **Rerun bridge**: adds ~0.5ms when active. Gate with `BuildConfig.DEBUG`.

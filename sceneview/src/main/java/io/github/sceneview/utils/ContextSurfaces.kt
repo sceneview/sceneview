@@ -17,6 +17,9 @@ internal class ContextSurfaces<C : Any, S : Any> {
         synchronized(surfaces) { surfaces[context] = surface }
     }
 
+    /** Looks up the pbuffer without transferring ownership, for a shared context's next user. */
+    fun surface(context: C): S? = synchronized(surfaces) { surfaces[context] }
+
     /** [context]'s surface, forgotten, or `null` when it was not adopted or already released. */
     fun release(context: C): S? = synchronized(surfaces) { surfaces.remove(context) }
 }

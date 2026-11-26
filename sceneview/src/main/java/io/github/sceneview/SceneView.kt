@@ -82,7 +82,6 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.SurfaceMirrorer
-import io.github.sceneview.utils.destroy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
@@ -761,6 +760,15 @@ fun SceneView(
     // content root is unused and nodes register directly, preserving pre-#1051 behaviour.
 
     val contentRoot = remember(engine) { Node(engine) }
+    DisposableEffect(contentRoot) {
+        onDispose {
+            // Whatever is still parented here belongs to someone else (the 2.x `childNodes` list
+            // of Compat2xChildNodes, which never destroys them): detach it so destroying the root
+            // does not destroy a node the caller may show again. Content nodes destroy themselves.
+            contentRoot.clearChildNodes()
+            contentRoot.destroy()
+        }
+    }
     val autoCenterState = remember { SceneAutoCenterState() }
 
     // ── Auto-fit camera framing (#1439 — drives the autoFitContent parameter) ────────────────────
@@ -1639,16 +1647,20 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
 // ── Engine / resource lifecycle helpers ──────────────────────────────────────────────────────────
 
 /**
- * Creates and remembers a Filament [Engine] and its backing EGL context.
+ * Acquires and remembers a Filament [Engine] and its backing EGL context.
  *
  * The engine is the root Filament object. It owns all other Filament resources and must outlive
- * them. Both the engine and its EGL context are destroyed automatically when the composition
- * leaves the tree — right away when its backend is idle, otherwise as soon as the backend has
- * drained the work already queued (a new scene's shader compiles, say), without blocking the main
- * thread on that drain.
+ * them. With the default factories, all calls share one engine per process, created on first use
+ * on the main thread. Disposal releases this composition's reference, but keeps the engine and
+ * EGL context alive even with no scenes. Recreating a rendering context on each screen leaks
+ * KGSL draw contexts on some Adreno drivers and eventually fails with "Couldn't create Engine"
+ * (#5202). Scene resources (views, renderers, loaders, environments and nodes) are still released
+ * by their own remember helpers on disposal. Do not destroy the shared engine yourself.
  *
- * Only one engine per process is typically needed. Pass it explicitly to all `remember*` helpers
- * if you want to share Filament resources across multiple `SceneView` composables.
+ * Passing either custom factory opts out: that call owns its engine and EGL context, destroyed
+ * on disposal once the backend has drained, without blocking the main thread (#3799, #4969).
+ * For example, `rememberEngine(engineCreator = { createEngine(it) })` owns a separate engine.
+ * Pass an engine explicitly to the other `remember*` helpers to share resources across scenes.
  *
  * To keep most of that work out of the composition, start [EngineWarmUp] before the 3D screen: it
  * prepares the EGL context on a background thread, the default [eglContextCreator] takes it, and the
@@ -1664,28 +1676,15 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
  *     .feature("engine.frame_info.disable_gpu_complete_metric", true)
  *     .build()
  * ```
- * @return A [Engine] that is destroyed with its EGL context on disposal.
+ * @return The process-wide engine with default factories, or an owned engine with custom factories.
  */
 @Composable
 fun rememberEngine(
-    eglContextCreator: () -> EGLContext = { createEglContext() },
-    engineCreator: (eglContext: EGLContext) -> Engine = { createEngine(it) }
-): Engine {
-    val eglContext = remember(eglContextCreator)
-    val engine = remember(eglContext) { engineCreator(eglContext) }
-    DisposableEffect(eglContext, engine) {
-        onDispose {
-            // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
-            // run every queued command, and a scene disposed right after it appeared still has
-            // its shader compiles queued — seconds on the main thread, an ANR (#3799).
-            // Mark it RETIRING after the scene's producers stop. Pending releases then accept
-            // a reached fence regardless of age, so a slow main looper cannot retain this engine
-            // and its EGL context. Other conditions (model decoders) still delay destruction.
-            engine.destroyWhenBackendIdle { eglContext.destroy() }
-        }
-    }
-    return engine
-}
+    eglContextCreator: () -> EGLContext = defaultEglContextCreator,
+    engineCreator: (eglContext: EGLContext) -> Engine = defaultEngineCreator
+): Engine = remember(eglContextCreator, engineCreator) {
+    defaultEnginePool.acquire(eglContextCreator, engineCreator)
+}.engine
 
 /**
  * Creates and remembers a [Node] of type [T] using [creator], destroying it on disposal.
