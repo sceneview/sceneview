@@ -57,6 +57,16 @@ AI-assisted workflow.
 
 ---
 
+## Your team ships SceneView?
+
+Write to [hello@sceneview.dev](mailto:hello@sceneview.dev?subject=Our%20app%20ships%20SceneView) with the app's name.
+It goes into the [Used in](https://github.com/sceneview/sceneview#used-in) list once you've approved the line,
+and you can reach the maintainer directly when something breaks.
+
+[:material-email-outline: Tell us about your app](mailto:hello@sceneview.dev?subject=Our%20app%20ships%20SceneView){ .md-button }
+
+---
+
 ## Maintainer
 
 [Thomas Gorisse](https://github.com/ThomasGorisse) — Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR

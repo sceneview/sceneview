@@ -30,6 +30,15 @@ object DemoSettings {
     /** Optional encoded answer from the current spatial-answer navigation entry. */
     var requestedAnswer: String? by mutableStateOf(null)
 
+    /**
+     * The demo on screen taking a new intent in place, or `null`. [MainActivity.onNewIntent]
+     * offers it every intent first: one it returns `true` for is the demo's alone — no
+     * navigation, no reset of the replay or QA settings, so a running AR session (and its
+     * playback) carries on. Ask in AR takes its next question this way while it is filmed.
+     * A demo sets it while it is composed and clears it on leaving.
+     */
+    var inPlaceIntentHandler: ((android.content.Intent) -> Boolean)? = null
+
     /** One-shot in-app route request used by demos that cannot own a NavController. */
     var requestedRoute: String? by mutableStateOf(null)
 

@@ -41,10 +41,15 @@ class BuildOnMainUnlessGoneTest {
         main.close()
     }
 
-    private suspend fun load(isEngineValid: () -> Boolean = { true }, build: () -> String = { "env" }) =
+    private suspend fun load(
+        isEngineValid: () -> Boolean = { true },
+        canBuild: () -> Boolean = { true },
+        build: () -> String = { "env" },
+    ) =
         buildOnMainUnlessGone(
             mainDispatcher = main,
             isEngineValid = isEngineValid,
+            canBuild = canBuild,
             destroy = { log += "destroy($it)" },
         ) {
             log += "build"
@@ -62,6 +67,27 @@ class BuildOnMainUnlessGoneTest {
         assertNull(load(isEngineValid = { false }))
         assertTrue(log.isEmpty())
     }
+
+    @Test
+    fun `a loader disposed while decoding cannot build on an engine kept alive by other scenes`() =
+        runBlocking {
+            val loaderAlive = AtomicBoolean(true)
+            val mainBusy = CountDownLatch(1)
+            val mainBlocked = CountDownLatch(1)
+            main.executor.execute {
+                mainBlocked.countDown()
+                mainBusy.await(5, TimeUnit.SECONDS)
+            }
+            assertTrue(mainBlocked.await(5, TimeUnit.SECONDS))
+            // The caller has its own scope: destroying the loader does not cancel this load.
+            val job = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                load(isEngineValid = { true }, canBuild = { loaderAlive.get() })
+            }
+            loaderAlive.set(false)
+            mainBusy.countDown()
+            assertNull(job.await())
+            assertTrue(log.isEmpty())
+        }
 
     @Test
     fun `a caller cancelled before Main runs never builds`() = runBlocking {

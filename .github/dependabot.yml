@@ -38,6 +38,12 @@ updates:
       # rc; stable 1.6.0 and later stay proposed.
       - dependency-name: "androidx.compose.material3:*"
         versions: ["[1.6.0-alpha01,1.6.0)"]
+      # Compose BOM 2026.11+ maps to Compose 1.13, whose AARs require
+      # compileSdk 37.1 (#5260). The libraries would then need 37.1 and so
+      # would every app that depends on them, for no SceneView feature.
+      # Revisit when compileSdk 37.1 is common.
+      - dependency-name: "androidx.compose:compose-bom"
+        versions: [">= 2026.11.0"]
       # (The `androidx.compose.material3:material3 >=1.5.0-alpha19` ignore rule
       # is gone: it existed only because those alphas require AGP 9.1+ /
       # compileSdk 37+. compileSdk moved to 37 in #3385 and AGP to 9.x in #3440,

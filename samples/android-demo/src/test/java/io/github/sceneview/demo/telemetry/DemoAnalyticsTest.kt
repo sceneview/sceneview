@@ -153,6 +153,12 @@ class DemoAnalyticsTest {
                 ("push_prompt_result" to mapOf("result" to "not_now")),
             AnalyticsEvent.PushOpened("launch", "cosmos") to
                 ("push_opened" to mapOf("campaign" to "launch", "sample_id" to "cosmos")),
+            AnalyticsEvent.TeamCard(TeamCardAction.Shown, TeamCardSurface.Home) to
+                ("team_card" to mapOf("action" to "shown", "surface" to "home")),
+            AnalyticsEvent.TeamCard(TeamCardAction.Mail, TeamCardSurface.About) to
+                ("team_card" to mapOf("action" to "mail", "surface" to "about")),
+            AnalyticsEvent.TeamCard(TeamCardAction.Dismissed, TeamCardSurface.Home) to
+                ("team_card" to mapOf("action" to "dismissed", "surface" to "home")),
             AnalyticsEvent.SettingsChanged("analytics", "false") to
                 ("settings_changed" to mapOf("key" to "analytics", "value" to "false")),
             AnalyticsEvent.Search("damaged helmet", SearchSurface.Models, "2-5") to

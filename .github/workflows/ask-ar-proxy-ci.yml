@@ -1,0 +1,54 @@
+name: Ask in AR Proxy CI
+
+# CI validation for the Ask in AR proxy (tools/ask-ar-proxy), a Cloudflare Worker.
+# Runs typecheck + unit tests on every push/PR that touches tools/ask-ar-proxy/.
+
+on:
+  push:
+    # `branches: [main]` is required — `paths:` alone does NOT scope the push
+    # trigger to a branch, so without it this workflow runs on every push to
+    # every branch (each `claude/*` worktree branch). PR coverage is already
+    # provided by the `pull_request` trigger below.
+    branches: [main]
+    paths:
+      - 'tools/ask-ar-proxy/**'
+  pull_request:
+    paths:
+      - 'tools/ask-ar-proxy/**'
+  workflow_dispatch:
+
+# One run per ref; cancel older in-progress runs to save resources.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Typecheck & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # vitest 5 needs Node ^22.12 (engines), unlike the Node 20 workflows (#1602).
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/ask-ar-proxy/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tools/ask-ar-proxy
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: tools/ask-ar-proxy
+        run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: tools/ask-ar-proxy
+        run: npx vitest run

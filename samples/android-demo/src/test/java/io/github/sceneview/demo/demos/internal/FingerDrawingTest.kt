@@ -32,7 +32,6 @@ import kotlin.math.sqrt
  */
 class FingerDrawingTest {
 
-    private val towardsViewer = Direction(z = -1f)
     private val spacing = 0.01f
 
     /** A circle in the XY plane — the stroke that turns through every direction. */
@@ -173,10 +172,6 @@ class FingerDrawingTest {
         assertEquals(world.x, restored.x, 1e-5f)
         assertEquals(world.y, restored.y, 1e-5f)
         assertEquals(world.z, restored.z, 1e-5f)
-
-        val direction = FingerDrawingPlacement.worldDirectionToAnchor(Direction(z = -1f), rotation)
-        assertEquals(1f, direction.x, 1e-5f)
-        assertEquals(1f, length(direction), 1e-5f)
     }
 
     @Test
@@ -440,7 +435,7 @@ class FingerDrawingTest {
         // #4504: the ends used to taper to half the thickness. A stroke drawn at one speed is
         // one thickness from its first ring to its last.
         val stroke = Drawing()
-            .penDown(Position(), radius = 0.02f, colorIndex = 0, frameHint = towardsViewer, spacing = spacing)
+            .penDown(Position(), radius = 0.02f, colorIndex = 0, spacing = spacing)
             .let { drawing ->
                 (1..60).fold(drawing) { d, i -> d.penMove(Position(x = i * 0.01f), targetRadius = 0.02f) }
             }
@@ -453,241 +448,6 @@ class FingerDrawingTest {
         }
     }
 
-    @Test
-    fun `both ends close in a full half-sphere of the stroke's radius`() {
-        val radius = 0.02f
-        val line = FingerDrawing.centerline(
-            (0..100).map { StrokePoint(Position(x = it * 0.01f), radius) },
-            spacing = 0.01f,
-        )
-        val vertices = FingerDrawing.vertices(line, towardsViewer)
-        // Start pole one radius behind the first point, end pole one radius past the last.
-        val startPole = vertices.first().position
-        val endPole = vertices.last().position
-        assertEquals(line.first().position.x - radius, startPole.x, 1e-5f)
-        assertEquals(line.last().position.x + radius, endPole.x, 1e-5f)
-        // Every cap vertex lies on the sphere of the end's radius: a round cap, not a point.
-        val perCap = FingerDrawing.CAP_RINGS * FingerDrawing.RADIAL_SEGMENTS
-        for (vertex in vertices.take(perCap)) {
-            assertEquals(radius, length(vertex.position - line.first().position), 1e-5f)
-        }
-        for (vertex in vertices.takeLast(perCap)) {
-            assertEquals(radius, length(vertex.position - line.last().position), 1e-5f)
-        }
-    }
-
-    // ── Frames ────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `every frame is orthonormal`() {
-        for (path in paths) {
-            val line = FingerDrawing.centerline(path, spacing = 0.05f)
-            for ((i, frame) in FingerDrawing.frames(line, towardsViewer).withIndex()) {
-                assertEquals("tangent $i", 1f, length(frame.tangent), 1e-3f)
-                assertEquals("normal $i", 1f, length(frame.normal), 1e-3f)
-                assertEquals("binormal $i", 1f, length(frame.binormal), 1e-3f)
-                assertEquals("normal·tangent $i", 0f, dot(frame.normal, frame.tangent), 1e-3f)
-                assertEquals("binormal·tangent $i", 0f, dot(frame.binormal, frame.tangent), 1e-3f)
-                assertEquals("binormal·normal $i", 0f, dot(frame.binormal, frame.normal), 1e-3f)
-            }
-        }
-    }
-
-    @Test
-    fun `the frame never flips or twists from one ring to the next`() {
-        // The ribbon that "se vrille": a frame built from a fixed up vector snaps round when
-        // the stroke passes the vertical, and the tube is pinched there. A transported frame
-        // turns only as much as the curve does.
-        for (path in paths) {
-            val line = FingerDrawing.centerline(path, spacing = 0.02f)
-            val frames = FingerDrawing.frames(line, towardsViewer)
-            for (i in 1 until frames.size) {
-                val turn = dot(frames[i - 1].tangent, frames[i].tangent)
-                val roll = dot(frames[i - 1].normal, frames[i].normal)
-                assertTrue(
-                    "ring $i rolls (cos $roll) more than the curve turns (cos $turn)",
-                    roll >= turn - 0.02f,
-                )
-            }
-        }
-    }
-
-    @Test
-    fun `a stroke drawn on the plane keeps one axis on the view direction all along`() {
-        // Drawn flat in front of the camera, the cross-section must not rotate at all: its
-        // normal starts on the view axis and stays there through a full turn of the circle.
-        val line = FingerDrawing.centerline(circle(), spacing = 0.02f)
-        for ((i, frame) in FingerDrawing.frames(line, towardsViewer).withIndex()) {
-            assertEquals("frame $i left the view axis", 1f, abs(dot(frame.normal, towardsViewer)), 1e-3f)
-        }
-    }
-
-    @Test
-    fun `a hint along the stroke still gives a frame`() {
-        val alongHint = (0..5).map { StrokePoint(Position(z = -it * 0.1f), 0.02f) }
-        val frames = FingerDrawing.frames(alongHint, towardsViewer)
-        assertEquals(6, frames.size)
-        for (frame in frames) {
-            assertEquals(1f, length(frame.normal), 1e-3f)
-            assertEquals(0f, dot(frame.normal, frame.tangent), 1e-3f)
-        }
-    }
-
-    // ── Mesh ──────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `vertex and index counts match the announced grid`() {
-        for (path in paths) {
-            val line = (FingerDrawing.centerline(path, spacing = 0.05f))
-            val vertices = FingerDrawing.vertices(line, towardsViewer)
-            assertEquals(FingerDrawing.vertexCount(line.size), vertices.size)
-            val indices = FingerDrawing.triangleIndices(line.size)
-            assertEquals(FingerDrawing.triangleCount(line.size) * 3, indices.size)
-            assertTrue(indices.all { it in vertices.indices })
-        }
-    }
-
-    @Test
-    fun `every normal is a unit vector`() {
-        for (path in paths) {
-            val line = (FingerDrawing.centerline(path, spacing = 0.05f))
-            for ((i, vertex) in FingerDrawing.vertices(line, towardsViewer).withIndex()) {
-                assertEquals("normal $i", 1f, length(requireNotNull(vertex.normal)), 1e-3f)
-            }
-        }
-    }
-
-    @Test
-    fun `every triangle with an area faces outwards`() {
-        // Winding and normals must agree, or the paint is lit from inside on one material
-        // side — invisible on a double-sided material until the light moves.
-        for (path in paths) {
-            val line = (FingerDrawing.centerline(path, spacing = 0.05f))
-            val vertices = FingerDrawing.vertices(line, towardsViewer)
-            val indices = FingerDrawing.triangleIndices(line.size)
-            var checked = 0
-            for (t in indices.indices step 3) {
-                val a = vertices[indices[t]]
-                val b = vertices[indices[t + 1]]
-                val c = vertices[indices[t + 2]]
-                val face = cross(b.position - a.position, c.position - a.position)
-                if (length(face) < 1e-9f) continue
-                val shading = a.normal!! + b.normal!! + c.normal!!
-                assertTrue("triangle ${t / 3} faces inwards", dot(normalize(face), normalize(shading)) > 0.3f)
-                checked++
-            }
-            assertTrue("only $checked triangles had an area", checked > indices.size / 3 / 2)
-        }
-    }
-
-    @Test
-    fun `each ring sits at its radius around its centreline point`() {
-        val line = (FingerDrawing.centerline(helix(), spacing = 0.05f))
-        val vertices = FingerDrawing.vertices(line, towardsViewer)
-        val firstBodyRing = FingerDrawing.CAP_RINGS
-        for ((i, point) in line.withIndex()) {
-            val start = (firstBodyRing + i) * FingerDrawing.RADIAL_SEGMENTS
-            for (j in 0 until FingerDrawing.RADIAL_SEGMENTS) {
-                assertEquals(
-                    "ring $i vertex $j",
-                    point.radius,
-                    length(vertices[start + j].position - point.position),
-                    1e-4f,
-                )
-            }
-        }
-    }
-
-    @Test
-    fun `both ends are closed by a round cap`() {
-        val line = listOf(
-            StrokePoint(Position(x = 0f), 0.1f),
-            StrokePoint(Position(x = 1f), 0.1f),
-        )
-        val vertices = FingerDrawing.vertices(line, towardsViewer)
-        val ring = FingerDrawing.RADIAL_SEGMENTS
-        // Start pole: one point, a radius behind the first centre, facing backwards.
-        for (j in 0 until ring) {
-            assertEquals(-0.1f, vertices[j].position.x, 1e-5f)
-            assertEquals(0f, vertices[j].position.y, 1e-5f)
-            assertEquals(-1f, vertices[j].normal!!.x, 1e-5f)
-        }
-        // End pole: a radius past the last centre, facing forwards.
-        for (j in 0 until ring) {
-            val vertex = vertices[vertices.size - ring + j]
-            assertEquals(1.1f, vertex.position.x, 1e-5f)
-            assertEquals(1f, vertex.normal!!.x, 1e-5f)
-        }
-        // Every cap vertex is on the sphere of its end, and its normal is the sphere's.
-        for (k in 0 until FingerDrawing.CAP_RINGS * ring) {
-            val vertex = vertices[k]
-            assertEquals("start cap vertex $k", 0.1f, length(vertex.position), 1e-5f)
-            assertEquals(1f, dot(normalize(vertex.position), vertex.normal!!), 1e-4f)
-        }
-    }
-
-    @Test
-    fun `a tap paints a ball`() {
-        val center = Position(0.3f, 0.2f, -0.1f)
-        val vertices = FingerDrawing.vertices(listOf(StrokePoint(center, 0.05f)), towardsViewer)
-        assertEquals(FingerDrawing.vertexCount(1), vertices.size)
-        for (vertex in vertices) {
-            assertEquals(0.05f, length(vertex.position - center), 1e-5f)
-            assertEquals(1f, dot(normalize(vertex.position - center), vertex.normal!!), 1e-3f)
-        }
-    }
-
-    @Test
-    fun `a swelling stroke leans its normals back down the slope`() {
-        // Radius doubling along +X: the surface is a cone, so its normals tilt towards -X.
-        val cone = (0..10).map { StrokePoint(Position(x = it * 0.1f), 0.1f + it * 0.02f) }
-        val vertices = FingerDrawing.vertices(cone, towardsViewer)
-        val middleRing = (FingerDrawing.CAP_RINGS + 5) * FingerDrawing.RADIAL_SEGMENTS
-        for (j in 0 until FingerDrawing.RADIAL_SEGMENTS) {
-            val normal = vertices[middleRing + j].normal!!
-            assertEquals("slope 0.2 gives x = -0.2 / sqrt(1.04)", -0.196f, normal.x, 2e-3f)
-        }
-    }
-
-    // ── Growing in place ──────────────────────────────────────────────────────
-
-    @Test
-    fun `padding keeps the vertex count constant while the stroke grows inside its capacity`() {
-        val path = helix(samples = 12)
-        val capacity = 96
-        var previousSize = -1
-        for (count in 2..path.size) {
-            val line = (FingerDrawing.centerline(path.take(count), spacing = 0.08f))
-            assertTrue(line.size <= capacity)
-            val vertices = FingerDrawing.vertices(line, towardsViewer, capacity)
-            assertEquals(FingerDrawing.vertexCount(capacity), vertices.size)
-            if (previousSize >= 0) assertEquals(previousSize, vertices.size)
-            previousSize = vertices.size
-        }
-    }
-
-    @Test
-    fun `padding is drawn as nothing`() {
-        val line = (FingerDrawing.centerline(zigzag(), spacing = 0.2f))
-        val capacity = line.size + 20
-        val vertices = FingerDrawing.vertices(line, towardsViewer, capacity)
-        val indices = FingerDrawing.triangleIndices(capacity)
-        val firstPaddingVertex = FingerDrawing.vertexCount(line.size)
-        val pole = vertices[firstPaddingVertex - 1].position
-        for (i in firstPaddingVertex until vertices.size) {
-            assertEquals("padding vertex $i is off the end pole", 0f, length(vertices[i].position - pole), 1e-6f)
-        }
-        // The exact mesh and the padded one draw the same surface: every triangle that
-        // touches padding has no area.
-        for (t in indices.indices step 3) {
-            val corners = listOf(indices[t], indices[t + 1], indices[t + 2])
-            if (corners.none { it >= firstPaddingVertex }) continue
-            val (a, b, c) = corners.map { vertices[it].position }
-            assertEquals("padding triangle ${t / 3} has an area", 0f, length(cross(b - a, c - a)), 1e-9f)
-        }
-        // And the part that is not padding is the exact mesh, vertex for vertex.
-        assertEquals(FingerDrawing.vertices(line, towardsViewer), vertices.take(firstPaddingVertex))
-    }
 
     @Test
     fun `capacity grows in steps and always holds the stroke`() {
@@ -706,7 +466,7 @@ class FingerDrawingTest {
     // ── Drawing model ─────────────────────────────────────────────────────────
 
     private fun Drawing.down(x: Float, color: Int = 0) =
-        penDown(Position(x = x), radius = 0.05f, colorIndex = color, frameHint = towardsViewer, spacing = spacing)
+        penDown(Position(x = x), radius = 0.05f, colorIndex = color, spacing = spacing)
 
     @Test
     fun `pen down, move, up leaves one finished stroke`() {
@@ -898,7 +658,7 @@ class FingerDrawingTest {
     fun `the ring estimate never undercounts the centreline`() {
         for (path in paths) {
             for (ringSpacing in listOf(0.01f, 0.05f, 0.5f)) {
-                val stroke = Stroke(0, 0, path, towardsViewer, ringSpacing)
+                val stroke = Stroke(0, 0, path, ringSpacing)
                 assertTrue(
                     "estimate under the real count at spacing $ringSpacing",
                     FingerDrawing.ringEstimate(stroke) >= FingerDrawing.line(stroke).size,

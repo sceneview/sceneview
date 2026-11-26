@@ -8,6 +8,16 @@ import org.junit.Test
 class ContextSurfacesTest {
 
     @Test
+    fun restoringAContextsSurfaceDoesNotReleaseItsOwnership() {
+        val surfaces = ContextSurfaces<String, String>()
+        surfaces.adopt("context", "pbuffer")
+        repeat(500) { assertEquals("pbuffer", surfaces.surface("context")) }
+        assertEquals(1, surfaces.size)
+        assertEquals("pbuffer", surfaces.release("context"))
+        assertNull(surfaces.surface("context"))
+    }
+
+    @Test
     fun releaseReturnsTheAdoptedSurfaceOnce() {
         val surfaces = ContextSurfaces<String, String>()
         surfaces.adopt("context", "pbuffer")

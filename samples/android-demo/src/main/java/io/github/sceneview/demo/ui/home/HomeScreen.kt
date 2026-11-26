@@ -130,6 +130,7 @@ import io.github.sceneview.demo.telemetry.SearchTerm
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.motionFade
+import io.github.sceneview.demo.teamcard.HomeTeamCard
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
 import io.github.sceneview.demo.whatsnew.rememberReturningSheetState
@@ -152,6 +153,7 @@ object HomeTestTags {
     const val HERO = "home-hero"
     const val SEARCH_CLOSE = "home-search-close"
     const val SUPPORT_ENTRY = "home-support-entry"
+    const val TEAM_CARD = "home-team-card"
     const val MENU = "home-menu"
     const val MENU_SUPPORT = "home-menu-support"
 
@@ -222,6 +224,14 @@ fun HomeScreen(
     onWhatsNewSinceClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
     onMenuSupportClick: () -> Unit = {},
+    /**
+     * Whether the "Your team ships SceneView?" card shows under the hero. Owned by
+     * [io.github.sceneview.demo.teamcard.TeamCard], which shows it once ever; defaulted off so
+     * previews and snapshots render the Home they pinned.
+     */
+    showTeamCard: Boolean = false,
+    onTeamCardMail: () -> Unit = {},
+    onTeamCardDismiss: () -> Unit = {},
     /**
      * A non-blank [query] the user settled on, with how many samples it shows — fired once the
      * field has been still for [SearchTerm.SETTLE_MS], or straight away when a sample is tapped
@@ -321,8 +331,7 @@ fun HomeScreen(
                         FeaturedPage.Demo(
                             entry = entry,
                             // The flagship page is a window onto the live stage, not a
-                            // still (#3948). `preview_hero_model_viewer` stays bundled;
-                            // no page draws it.
+                            // still (#3948).
                             heroArt = null,
                             // The flagship's page says what it opens (#4622).
                             titleRes = if (entry.id == HERO_DEMO_ID) {
@@ -425,6 +434,7 @@ fun HomeScreen(
     val chipsShown = !searching && rows.map { it.category }.distinct().size > 1
     val headItemCount = 1 + // header spacer
         (if (searching) 0 else 1) + // hero
+        (if (!searching && showTeamCard) 1 else 0) + // team card
         (if (searching) 0 else 1) + // support entry
         (if (!searching && whatsNewLead != null) 1 else 0) +
         (if (!searching && featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) +
@@ -507,6 +517,20 @@ fun HomeScreen(
                         pagerState = featuredPagerState,
                         modifier = Modifier.testTag(HomeTestTags.HERO),
                     )
+                }
+                // "Your team ships SceneView?", once ever (teamcard/TeamCardPolicy.kt). Its own
+                // item above the support entry, never part of it: the card offers no support tier.
+                if (!searching && showTeamCard) {
+                    item(key = TEAM_CARD_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                        HomeTeamCard(
+                            onMail = onTeamCardMail,
+                            onDismiss = onTeamCardDismiss,
+                            modifier = Modifier
+                                .testTag(HomeTestTags.TEAM_CARD)
+                                .animateItem()
+                                .padding(top = home.groupGap - home.rowGap),
+                        )
+                    }
                 }
                 if (!searching) {
                     item(key = "support", span = { GridItemSpan(maxLineSpan) }) {
@@ -734,6 +758,7 @@ private const val HERO_ITEM_KEY = "hero"
 
 /** Grid key of the "What's new" row under the hero. */
 private const val WHATS_NEW_ITEM_KEY = "whats-new"
+private const val TEAM_CARD_ITEM_KEY = "team-card"
 
 /**
  * The layer under the grid that carries the sky and the night circuit (#3948).

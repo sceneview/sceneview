@@ -46,9 +46,9 @@ git history (`b1dc1dc59`), so the backdrop does not change.
 `prompts.json`, `heroes.json` and `store.json`, and of the two AR occlusion cards below. The
 earlier `damaged_helmet.webp` and the stylised `hero.webp` are deleted, so nothing can be
 generated from either again. On Android only the AR occlusion items are still generated from
-it; the other helmet items feed iOS imagesets, which are not regenerated (iOS is end of life).
-The unused `preview_hero_model_viewer.webp` still shows the Damaged Helmet: no page draws it
-and release builds shrink unused resources.
+it; the other helmet items fed iOS imagesets, which are not regenerated (iOS is end of life).
+The unused hero `preview_hero_model_viewer` (Android WebP and iOS imageset), which still
+showed the Damaged Helmet and which no page drew, was removed by #4951.
 
 ### Cards cropped from real captures (#3836)
 
@@ -206,37 +206,19 @@ b1dc1dc59:samples/android-demo/src/main/res/drawable-nodpi/<name>.webp`, decoded
 
 The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/
 preview_<scene_id>.imageset/` — one universal JPEG per appearance (`preview_<id>.jpg` for
-light, `preview_<id>_dark.jpg` for dark; no 1x/2x/3x scales), 800×640 like the Android cards,
-plus the dark-only `preview_hero_model_viewer.jpg` at 1600×1000. `--format jpg` writes the
-same crop of the same raw as a JPEG (q85) instead of a WebP, so an iOS imageset is one
-`gen.py` run plus a rename. iOS scene ids do not all match Android demo ids — the table is
-the mapping, and it is the only place it is written down:
+light, `preview_<id>_dark.jpg` for dark; no 1x/2x/3x scales), 800×640 like the Android cards.
+`DemoItem.previewImageName` is the only lookup: `preview_` + the scene's `@sceneId` with
+hyphens turned into underscores, so an imageset whose name matches no `@sceneId` is never
+drawn. `--format jpg` writes the same crop of the same raw as a JPEG (q85) instead of a WebP,
+so a generated iOS card is one `gen.py` run plus a rename.
 
-| Imageset | Files | `gen.py` item | Notes |
-|---|---|---|---|
-| `preview_hero_model_viewer` | `preview_hero_model_viewer.jpg` (1600×1000, dark only) | `heroes.json` → `model-viewer`, `--kind hero` | Also the `BrowseOnlineModelsCard` artwork. |
-| `preview_model_viewer` | `preview_model_viewer.jpg`, `_dark.jpg` | `prompts.json` → `model-viewer` | Same scene as the Android card. |
-| `preview_dynamic_sky` | `preview_dynamic_sky.jpg`, `_dark.jpg` | `prompts.json` → `lighting-lab` | iOS `dynamic-sky` is Android's Lighting Lab Sky tab (`DemoDeepLinkRegistry`), so it takes the Lighting Lab card. |
-| `preview_materials` | `preview_materials.jpg`, `_dark.jpg` | `prompts.json` → `materials` | Same scene as the Android card. |
-| `preview_fog` | `preview_fog.jpg`, `_dark.jpg` | `prompts.json` → `fog` | iOS still lists `fog` as its own card (`FogScene.swift`); Android folded it into Lighting Lab in #3464, so `fog` is an iOS-only item and nothing under `drawable-nodpi/` consumes it. |
-
-```bash
-GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
-  tools/demo-previews/prompts.json /tmp/ios --refs tools/demo-previews/refs --format jpg \
-  --only model-viewer,materials,lighting-lab,fog
-GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
-  tools/demo-previews/heroes.json /tmp/ios --kind hero --refs tools/demo-previews/refs --format jpg
-X=samples/ios-demo/SceneViewDemo/Assets.xcassets
-cp /tmp/ios/jpg/preview_model_viewer_light.jpg  $X/preview_model_viewer.imageset/preview_model_viewer.jpg
-cp /tmp/ios/jpg/preview_model_viewer_dark.jpg   $X/preview_model_viewer.imageset/preview_model_viewer_dark.jpg
-cp /tmp/ios/jpg/preview_lighting_lab_light.jpg  $X/preview_dynamic_sky.imageset/preview_dynamic_sky.jpg
-cp /tmp/ios/jpg/preview_lighting_lab_dark.jpg   $X/preview_dynamic_sky.imageset/preview_dynamic_sky_dark.jpg
-cp /tmp/ios/jpg/preview_materials_light.jpg     $X/preview_materials.imageset/preview_materials.jpg
-cp /tmp/ios/jpg/preview_materials_dark.jpg      $X/preview_materials.imageset/preview_materials_dark.jpg
-cp /tmp/ios/jpg/preview_fog_light.jpg           $X/preview_fog.imageset/preview_fog.jpg
-cp /tmp/ios/jpg/preview_fog_dark.jpg            $X/preview_fog.imageset/preview_fog_dark.jpg
-cp /tmp/ios/jpg/preview_hero_model_viewer.jpg   $X/preview_hero_model_viewer.imageset/
-```
+The `gen.py` imagesets this section used to list are gone or superseded.
+`preview_model_viewer` and `preview_materials` carry Android cards (see "Cards shared with
+Android" below). `preview_fog` went with the iOS `fog` screen (#3765). #4951 removed
+`preview_hero_model_viewer`, the dark 1600×1000 `BrowseOnlineModelsCard` artwork that no view
+has drawn since #4163, and `preview_dynamic_sky`: `dynamic-sky` has been an
+alias of `lighting` since #4277, so no `@sceneId` looked it up. Both showed the Damaged
+Helmet.
 
 The iOS cards of demos Android also lists are copies of the Android cards (see "Cards shared
 with Android" below). The other iOS imagesets were
@@ -285,14 +267,20 @@ card, re-encoded from its two WebPs as JPEG q90 (`preview_<id>.jpg` light,
 | `preview_ar_placement` | `ar-placement` (the generated Toy Car pair, 2026-09-30) | the Toy Car opened in `model-viewer` (no ARKit on the Simulator), light only |
 | `preview_ar_record_playback` | `ar-record-playback` | the Damaged Helmet opened in `model-viewer`, light only |
 | `preview_ar_rerun` | `ar-rerun` | a capture of the bundled replay 7 s in, light only |
-| `preview_camera_controls` | `camera-gestures` | a helmet-only render |
 | `preview_custom_mesh` | `custom-geometry` | a sphere-and-axes render |
 | `preview_lighting` | `lighting` | a spot-lit helmet render |
 | `preview_lines_paths` | `lines-paths` | a wireframe arch render |
-| `preview_materials` | `materials` | a helmet render (the `gen.py` row above is superseded) |
+| `preview_materials` | `materials` | a `gen.py` helmet render |
 | `preview_model_viewer` | `model-viewer` | the same helmet, a different crop |
 | `preview_rolling_balls` | `rolling-balls` | its own simulator capture (#4083) |
 | `preview_splat_preview` | `splat-preview` | its own simulator capture of the dot rendering (#4073) |
+
+`preview_lighting` and `preview_model_viewer` still hold the Android cards of 2026-09-30,
+which show the Damaged Helmet: #5246 recaptured the Android pairs and did not re-encode
+them here. Until they are (#4951), these two rows break the same-picture rule.
+`preview_camera_controls`, which carried the `camera-gestures` card, was removed by #4951:
+the iOS scene id is `camera-gestures`, so no lookup ever reached it, and that row shows the
+SF Symbol tile.
 
 The other way round, Android's `debug-overlay` card is the iOS pair (the `gen.py`
 `debug-overlay` prompt of #3308): the golden crop in the table above was a black frame with
@@ -303,8 +291,11 @@ to it.
 
 ## Home hero banner
 
-`heroes.json` + `--kind hero` generates the wide `preview_hero_<demo_id>.webp` (1600×1000,
-16:10) that `HomeHero` shows at the top of the Showcase tab. Dark-only, and the prompt is
+No screen draws a hero image any more: the home header is the live 3D stage (#3948), and
+#4951 removed the last generated hero, `preview_hero_model_viewer`, from both apps. The
+recipe stays for the record. `heroes.json` + `--kind hero` generates the wide
+`preview_hero_<demo_id>.webp` (1600×1000, 16:10) that `HomeHero` used to show at the top of
+the Showcase tab. Dark-only, and the prompt is
 used **verbatim** — no field or style suffix — because the hero has a Compose caption
 overlaid on its left third and therefore needs its own framing and lighting directions.
 16:10 is not an aspect the API offers, so the image is generated at 16:9 and centre-cropped.
@@ -315,8 +306,8 @@ GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/ge
 cp /tmp/hero/webp/*.webp samples/android-demo/src/main/res/drawable-nodpi/
 ```
 
-The hero and the `model-viewer` card must always show the same model: they sit on the same
-screen, a thumb's width apart, and #3438 was filed because they did not.
+A hero brought back must show the same model as the `model-viewer` card: they would sit on
+the same screen, a thumb's width apart, and #3438 was filed because they did not.
 
 ## Model thumbnails
 

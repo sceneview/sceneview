@@ -503,6 +503,7 @@ code, pre { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga
 .used-in__logos { list-style: none; margin: var(--s-4) 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s-7); row-gap: var(--s-4); }
 .used-in__logos a { display: inline-flex; align-items: center; min-height: 48px; border-radius: var(--s-1); }
 .used-in__logo { display: block; }
+.used-in__confirmed { margin: var(--s-4) 0 0; max-width: 46rem; font: var(--md-sys-typescale-body-medium); color: var(--md-sys-color-on-surface-variant); }
 .used-in__logo--mono { filter: brightness(0); opacity: 0.72; transition: opacity 150ms; }
 .used-in__logos a:hover .used-in__logo--mono, .used-in__logos a:focus-visible .used-in__logo--mono { opacity: 1; }
 :root[data-theme="dark"] .used-in__logo--mono { filter: brightness(0) invert(1); opacity: 0.8; }

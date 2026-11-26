@@ -32,6 +32,7 @@ import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
 import io.github.sceneview.demo.fragments.FingerDrawingFragment
 import io.github.sceneview.demo.fragments.RollingBallsFragment
 import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
+import io.github.sceneview.demo.teamcard.TeamCard
 
 /**
  * The sample on screen, for events logged deep inside shared components (the settings sheet,
@@ -67,6 +68,8 @@ fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
                 ?: "unknown"
             Telemetry.analytics.log(AnalyticsEvent.ScreenView(screenName = sampleId, screenClass = SCREEN_CLASS_SAMPLE))
             Telemetry.analytics.log(AnalyticsEvent.SampleOpen(sampleId, category, source, entryId, initialMode))
+            // Counts toward the team card's "after the 3rd sample opened" (teamcard/TeamCardPolicy.kt).
+            TeamCard.onSampleOpened()
         }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {

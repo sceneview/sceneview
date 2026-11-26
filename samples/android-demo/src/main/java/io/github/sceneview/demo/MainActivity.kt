@@ -56,6 +56,8 @@ import io.github.sceneview.demo.theme.rememberMotionEnabled
 import io.github.sceneview.demo.telemetry.AnalyticsEvent
 import io.github.sceneview.demo.telemetry.ConsentHost
 import io.github.sceneview.demo.telemetry.OpenSource
+import io.github.sceneview.demo.teamcard.TeamCard
+import io.github.sceneview.demo.telemetry.DemoPushNotifier
 import io.github.sceneview.demo.telemetry.PushIntent
 import io.github.sceneview.demo.telemetry.PushPromptHost
 import io.github.sceneview.demo.telemetry.SampleTelemetry
@@ -159,6 +161,13 @@ class MainActivity : ComponentActivity() {
         // Support SceneView: count the cold start for the interstitial's "never before the
         // third session" rule, and consume any contribution Play confirmed while we were away.
         if (savedInstanceState == null) SupportPrompt.onSessionStart()
+        // "Your team ships SceneView?": the Home card waits for the 5th cold start (TeamCardPolicy).
+        // `--es team_card_qa reset` (debug builds only) forgets the count first, as on a new install.
+        TeamCard.init(this)
+        if (BuildConfig.DEBUG && savedInstanceState == null && intent?.getStringExtra("team_card_qa") == "reset") {
+            TeamCard.resetForQa()
+        }
+        if (savedInstanceState == null) TeamCard.onSessionStart()
         SupportBilling.connect(this)
         // `--es support_qa prompt|ready|unavailable|thanks|pending` (debug builds only): show the interstitial
         // now, optionally in its after-purchase state, so captures need no real purchase.
@@ -168,6 +177,12 @@ class MainActivity : ComponentActivity() {
         // Usage statistics + push (demo app only). A no-op in a build without a Firebase config,
         // and Firebase itself only starts once the consent allows it (telemetry/Telemetry.kt).
         Telemetry.ensureInit(this)
+        // `--es push_qa <sample-id>` (debug builds only): posts a "What's new" notification through
+        // the same path as a received push (DemoPushNotifier), so the channel, the opt-out checks
+        // and the tap into the sample can be seen without sending anything through FCM.
+        if (BuildConfig.DEBUG && savedInstanceState == null) {
+            intent?.getStringExtra("push_qa")?.let { DemoPushNotifier.postQa(this, sample = it) }
+        }
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
         // Keep the AR tracking lines for the bug report past the log buffer (#4529).
@@ -264,6 +279,11 @@ class MainActivity : ComponentActivity() {
         // Replace the activity intent so subsequent re-creations see the new
         // deep link, not the original launcher intent.
         setIntent(intent)
+        // `--es push_qa` reaches a debug activity already on top here (singleTop), not onCreate.
+        if (BuildConfig.DEBUG) intent.getStringExtra("push_qa")?.let { DemoPushNotifier.postQa(this, sample = it) }
+        // The demo on screen may take it in place (Ask in AR's next question): no navigation
+        // and no reset below, so its AR session and any replay keep running.
+        if (DemoSettings.inPlaceIntentHandler?.invoke(intent) == true) return
         // Same dual-ingress policy as onCreate — `--es demo` first, URL second.
         // Both go through DeepLinkRouter.validate / .parse so unknown ids are
         // dropped rather than routed to PlaceholderDemo. See #958.

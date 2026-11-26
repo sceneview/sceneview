@@ -4,8 +4,8 @@
 
 ```kotlin
 // build.gradle.kts — the current release
-implementation("io.github.sceneview:sceneview:4.72.0")    // 3D
-implementation("io.github.sceneview:arsceneview:4.72.0")  // AR, includes the 3D module
+implementation("io.github.sceneview:sceneview:4.76.0")    // 3D
+implementation("io.github.sceneview:arsceneview:4.76.0")  // AR, includes the 3D module
 ```
 
 SceneView 2.x and 3.x are outdated; if you learned the 2.x API, here is the 4.x equivalent:
@@ -18,10 +18,10 @@ maintained successor to Google Sceneform. Open source, Apache 2.0.
 
 | Building with | Add | Then write |
 |---|---|---|
-| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.72.0` | `SceneView { }` |
-| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.72.0` | `ARSceneView { }` or `PlacementScene` |
+| Jetpack Compose — 3D | `io.github.sceneview:sceneview:4.76.0` | `SceneView { }` |
+| Jetpack Compose — AR | `io.github.sceneview:arsceneview:4.76.0` | `ARSceneView { }` or `PlacementScene` |
 | Android Views / XML | the same | `SceneView { }` inside a `ComposeView` |
-| Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.72.0` | `SceneViewer(model = …)` in `commonMain` |
+| Kotlin / Compose Multiplatform (Android, desktop) | `io.github.sceneview:sceneview-compose:4.76.0` | `SceneViewer(model = …)` in `commonMain` |
 | Web | `npm install sceneview-web` | `SceneView.modelViewer("canvas", "model.glb")` |
 
 `sceneview-compose` is the Compose Multiplatform viewer façade with its own API; Android `io.github.sceneview.*` code needs `io.github.sceneview:sceneview` for 3D or `io.github.sceneview:arsceneview` for AR.
@@ -101,7 +101,7 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.72.0")
+implementation("io.github.sceneview:sceneview:4.76.0")
 ```
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.3 or newer and JVM
@@ -184,7 +184,7 @@ fun ModelScreenWithLoading() {
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.72.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.76.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -259,8 +259,8 @@ the move with before/after code.
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.72.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.72.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -268,7 +268,7 @@ the move with before/after code.
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.72.0")
+implementation("io.github.sceneview:sceneview-compose:4.76.0")
 ```
 
 ```kotlin
@@ -331,16 +331,18 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.72.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.72.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.72.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.72.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.76.0` |
+| Android AR | `io.github.sceneview:arsceneview:4.76.0` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.76.0` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.76.0` |
 | Apple (SPM) — deprecated | `https://github.com/sceneview/sceneview.git`, `exact: "4.68.0"` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
 | Flutter — deprecated | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |
 | React Native — deprecated | [`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm |
 | AI assistants | `npx -y sceneview-mcp` — see [Use with AI](#use-with-ai) |
+
+To check for a newer release, look at [Maven Central](https://central.sonatype.com/artifact/io.github.sceneview/sceneview) or [`maven-metadata.xml`](https://repo1.maven.org/maven2/io/github/sceneview/sceneview/maven-metadata.xml). The search.maven.org index is stale: it still shows an old 2.x release as the latest.
 
 ---
 
@@ -596,7 +598,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.72.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.76.0")`.
 
 [Landing page](https://sceneview.github.io/) · [Web demo](https://sceneview.github.io/web-demo/) · [npm](https://www.npmjs.com/package/sceneview-web)
 
@@ -682,6 +684,13 @@ Declared in their public source code or published build files (checked November 
 - **[Niantic Spatial](https://github.com/nianticspatial/nsdk-samples-kotlin/blob/main/NsdkSamples/NsdkSamples/build.gradle.kts)**: the Kotlin samples of its spatial SDK (ARSceneView 2.3.1).
 - **[GeneXus](https://central.sonatype.com/artifact/com.genexus.android/AugmentedReality)**: its Android augmented reality module, in the Maven Central POM (SceneView 2.3.0).
 - **[TruVideo](https://central.sonatype.com/artifact/com.truvideo.com/sdk-camera)**: its camera SDK, in the Maven Central POM (ARSceneView 2.3.0).
+
+Confirmed by the team (November 25, 2026):
+
+- **[Wikiloc](https://www.wikiloc.com/)** — [Wikiloc - Trails of the World](https://play.google.com/store/apps/details?id=com.wikiloc.wikilocandroid).
+- **[Forty](https://www.forty.co.il/)** — pregnancy and cycle tracker: [Google Play](https://play.google.com/store/apps/details?id=com.forty.eliran.forum) · [App Store](https://apps.apple.com/il/app/pregnancy-tracker-forty/id1341872033).
+
+**Your team ships SceneView?** Write to [hello@sceneview.dev](mailto:hello@sceneview.dev?subject=Our%20app%20ships%20SceneView) with the app's name. It goes into this list once you've approved the line, and you can reach the maintainer directly when something breaks.
 
 ## Built with SceneView
 

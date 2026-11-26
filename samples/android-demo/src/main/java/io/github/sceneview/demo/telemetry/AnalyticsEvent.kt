@@ -3,10 +3,9 @@ package io.github.sceneview.demo.telemetry
 /**
  * The demo app's analytics taxonomy — every event the app may log, with its exact name and
  * parameters. The shared events match the iOS demo; coordinate changes to those names there.
- * Android only: support `entry_source`, `home`/`menu` shown sources, purchase launched/pending
- * events, and the `tier_tiny`,
- * `purchase_cancelled`, `purchase_failed`, `purchase_already_owned`, `purchase_pending` and
- * `open_collective` support results.
+ * Android only: `team_card`, support `entry_source`, `home`/`menu` shown sources, and the
+ * `open_collective` support result. No event says what was bought, for how much, or whether a
+ * payment went through: the support sheet's `store` result only says Google Play's sheet opened.
  *
  * Event and parameter names are snake_case and at most [MAX_NAME] characters, user-property
  * names at most [MAX_USER_PROPERTY_NAME] (GA4's limits); string values are cut to [MAX_VALUE]
@@ -112,16 +111,6 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("source" to source.value, "entry_source" to source.entrySource)
     }
 
-    data class SupportPurchaseLaunched(val productId: String, val source: SupportPromptSource) :
-        AnalyticsEvent("support_prompt_purchase_launched") {
-        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
-    }
-
-    data class SupportPurchasePending(val productId: String, val source: SupportPromptSource) :
-        AnalyticsEvent("support_prompt_purchase_pending") {
-        override fun rawParams() = mapOf("product_id" to productId, "entry_source" to source.entrySource)
-    }
-
     data class SupportPromptResult(val result: SupportResult, val source: SupportPromptSource? = null) :
         AnalyticsEvent("support_prompt_result") {
         override fun rawParams() = buildMap {
@@ -132,6 +121,15 @@ sealed class AnalyticsEvent(val name: String) {
 
     data class PushOpened(val campaign: String, val sampleId: String) : AnalyticsEvent("push_opened") {
         override fun rawParams() = mapOf("campaign" to campaign, "sample_id" to sampleId)
+    }
+
+    /**
+     * The "Your team ships SceneView?" card ([io.github.sceneview.demo.teamcard.TeamCard]):
+     * `shown` once when the Home card appears, `mail` from the card or the About row,
+     * `dismissed` from the card. Android only.
+     */
+    data class TeamCard(val action: TeamCardAction, val surface: TeamCardSurface) : AnalyticsEvent("team_card") {
+        override fun rawParams() = mapOf("action" to action.value, "surface" to surface.value)
     }
 
     data class SettingsChanged(val key: String, val value: String) : AnalyticsEvent("settings_changed") {
@@ -215,6 +213,19 @@ enum class PromptResult(val value: String) {
     NotNow("not_now"),
 }
 
+/** What happened to the team card, for `team_card.action`. */
+enum class TeamCardAction(val value: String) {
+    Shown("shown"),
+    Mail("mail"),
+    Dismissed("dismissed"),
+}
+
+/** Where the team card was, for `team_card.surface`. */
+enum class TeamCardSurface(val value: String) {
+    Home("home"),
+    About("about"),
+}
+
 /** How the support sheet was opened, for `support_prompt_shown.source`. */
 enum class SupportPromptSource(val value: String, val entrySource: String) {
     // Preserve existing shown.source values for historical reports.
@@ -226,21 +237,12 @@ enum class SupportPromptSource(val value: String, val entrySource: String) {
 
 /** The final answer for one display of the support sheet. */
 enum class SupportResult(val value: String) {
-    TierTiny("tier_tiny"),
-    TierSmall("tier_small"),
-    TierMedium("tier_medium"),
-    TierLarge("tier_large"),
-    PurchaseCancelled("purchase_cancelled"),
-    PurchaseFailed("purchase_failed"),
-    PurchaseAlreadyOwned("purchase_already_owned"),
-    PurchasePending("purchase_pending"),
+    /** Google Play's sheet opened. Nothing about the amount or the payment is logged. */
+    Store("store"),
     OpenCollective("open_collective"),
     NotNow("not_now"),
     Never("never"),
-    Dismissed("dismissed");
-
-    internal val isCompletedPurchase: Boolean
-        get() = this == TierTiny || this == TierSmall || this == TierMedium || this == TierLarge
+    Dismissed("dismissed"),
 }
 
 /** User properties, set once and updated when they change. Values are the strings listed. */

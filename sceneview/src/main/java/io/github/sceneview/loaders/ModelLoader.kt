@@ -54,7 +54,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
@@ -559,24 +561,54 @@ class ModelLoader(
         onUnreadable: (RuntimeException) -> Unit = {},
         unit: ModelUnit? = null,
         onLoadBegun: (Model) -> R,
+    ): R? = ModelLoadsInFlight.track {
+        loadModelThenTracked(
+            fileLocation, resourceResolver, create, onProgress, onDestroyedMeanwhile,
+            onUnsupported, onRefused, onUnreadable, unit, onLoadBegun,
+        )
+    }
+
+    /** The body of [loadModelThen], registered in [ModelLoadsInFlight] while it runs. */
+    private suspend fun <R : Any> loadModelThenTracked(
+        fileLocation: String,
+        resourceResolver: (resourceFileName: String) -> String,
+        create: (Buffer) -> Model?,
+        onProgress: ((ModelLoadProgress) -> Unit)?,
+        onDestroyedMeanwhile: () -> Unit,
+        onUnsupported: (UnsupportedGltfExtensionException) -> Unit,
+        onRefused: (GltfLimitException) -> Unit,
+        onUnreadable: (RuntimeException) -> Unit,
+        unit: ModelUnit?,
+        onLoadBegun: (Model) -> R,
     ): R? {
         onProgress?.invoke(ModelLoadProgress(Stage.Reading, 0f))
-        val buffer = FileLoader.loadFileBuffer(
-            context,
+        val buffer = readModelFile(
             fileLocation,
             onProgress?.let { report -> { read: Float -> report(ModelLoadProgress(Stage.Reading, READING_END * read)) } },
         ) ?: run {
             Log.w(TAG, "Could not read $fileLocation")
             return null
         }
+        // A load abandoned while it read (its screen rotated away) stops here and frees the file,
+        // rather than holding it through the conversions next to the new screen's load (#5271).
+        // `loadFileBuffer`'s own `withContext` already throws on return; this states it.
+        currentCoroutineContext().ensureActive()
         onProgress?.invoke(ModelLoadProgress(Stage.Creating, READING_END))
         // The extension check scans the JSON of what can be a 60 MB generated model, transcoding
         // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
         // main thread. The extension check runs first, so its typed refusal comes before any other.
         val (source, gltf) = try {
-            withContext(Dispatchers.Default) {
-                buffer.toFilamentModelSource(fileLocation, unit, onUnsupported).let { it to GltfLimits.parse(it.buffer) }
-            }
+            // A GLB that has to be copied to drop an extension (see GltfMaterialCompatibility) needs
+            // a second array of its size: the same heap as the read, the same recovery.
+            afterAbandonedLoadsOnOutOfMemory(fileLocation, "prepare") {
+                withContext(Dispatchers.Default) {
+                    // The loader read these bytes itself: nobody else holds them.
+                    val prepared = buffer.toFilamentModelSource(fileLocation, unit, onUnsupported, ownsSource = true)
+                    // Neither step suspends: an abandoned load would otherwise run both, holding the file.
+                    ensureActive()
+                    prepared to GltfLimits.parse(prepared.buffer)
+                }
+            } ?: return null
         } catch (unreadable: RuntimeException) {
             // An unsupported format, or a file its extension sent to a converter that cannot parse
             // it (an HTML error page saved as `.stl`): logged, then the result is `null`.
@@ -649,6 +681,9 @@ class ModelLoader(
                     val loaded = resources.toMap()
                     gltf.restPoseBounds(loaded::get) to gltf.animationData(loaded::get)
                 }
+                // Read now, detached: the Main block below then holds neither `gltf` nor `source`,
+                // which both keep the whole GLB (its BIN chunk included) reachable (#5271).
+                val emissiveStrengths = gltf.emissiveStrengths()
                 if (resources.isNotEmpty()) {
                     // The converted bytes (a PNG for an external WebP image), as gltfio gets them.
                     val loaded = resources.toMap()
@@ -686,7 +721,7 @@ class ModelLoader(
                         )
                     }
                     // The authored glow AR scales from (#4950): Filament cannot read it back.
-                    EmissiveScale.record(model, gltf.emissiveStrengths())
+                    EmissiveScale.record(model, emissiveStrengths)
                     RestPoseBounds.record(model, restPose)
                     AnimationEnvelopes.record(model, animationData)
                     onLoadBegun(model)
@@ -694,6 +729,57 @@ class ModelLoader(
             }
         } catch (failure: UnloadableModelException) {
             Log.w(TAG, "${failure.message}; the model was destroyed")
+            null
+        }
+    }
+
+    /**
+     * Reads [fileLocation] for [loadModelThen], with the recovery of [afterAbandonedLoadsOnOutOfMemory].
+     */
+    private suspend fun readModelFile(fileLocation: String, onRead: ((Float) -> Unit)?): Buffer? =
+        afterAbandonedLoadsOnOutOfMemory(fileLocation, "read") {
+            FileLoader.loadFileBuffer(context, fileLocation, onRead)
+        }
+
+    /**
+     * Runs [step], one of the large allocations of a load ([what]: reading the file, or copying
+     * it). When the Java heap has no room for it, as on a 16 MiB Android 8 heap while the previous
+     * screen's abandoned load still holds its own copy (#5271), it waits for the abandoned loads
+     * to end, then runs [step] once more. A second failure is logged and the load fails (`null`):
+     * the model does not show, and the app keeps running. [step] must be safe to run twice.
+     */
+    private suspend fun <T : Any> afterAbandonedLoadsOnOutOfMemory(
+        fileLocation: String,
+        what: String,
+        step: suspend () -> T?,
+    ): T? {
+        try {
+            return step()
+        } catch (outOfMemory: OutOfMemoryError) {
+            // An abandoned load unwinds here: it has nothing to retry for.
+            currentCoroutineContext().ensureActive()
+            Log.w(
+                TAG,
+                "Not enough Java heap to $what $fileLocation (${outOfMemory.message}); waiting for " +
+                    "${ModelLoadsInFlight.abandonedCount} abandoned load(s), then trying again",
+            )
+        }
+        val settled = ModelLoadsInFlight.awaitAbandoned(ABANDONED_LOAD_WAIT_MS)
+        currentCoroutineContext().ensureActive()
+        if (!settled) {
+            Log.w(TAG, "Abandoned loads still running after $ABANDONED_LOAD_WAIT_MS ms; trying $fileLocation again anyway")
+        }
+        // What the abandoned loads held is unreachable now. No explicit GC: ART runs a full
+        // collection itself before it throws OutOfMemoryError on the retry's allocation.
+        return try {
+            step()
+        } catch (outOfMemory: OutOfMemoryError) {
+            currentCoroutineContext().ensureActive()
+            Log.e(
+                TAG,
+                "Could not load $fileLocation: not enough Java heap to $what it (limit " +
+                    "${Runtime.getRuntime().maxMemory() shr 20} MiB, ${outOfMemory.message})",
+            )
             null
         }
     }
@@ -1663,6 +1749,9 @@ class ModelLoader(
 
         private const val TAG = "ModelLoader"
 
+        /** How long a load out of heap waits for the abandoned ones to end (#5271). */
+        private const val ABANDONED_LOAD_WAIT_MS = 30_000L
+
         /**
          * The glTF extensions the bundled Filament gltfio can load. A model whose
          * `extensionsRequired` names any other is found before any Filament call: [awaitModelInstance]
@@ -2002,16 +2091,22 @@ private fun Buffer.toFilamentModelSource(
     fileName: String? = null,
     unit: ModelUnit? = null,
     onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
+    ownsSource: Boolean = false,
 ): FilamentModelSource {
     val converted = toModelGlb(fileName, unit)
     // Before the transcode: a model refused here is not worth decoding its images.
     GltfRequiredExtensions.unsupported(converted)
         .takeIf { it.isNotEmpty() }
         ?.let { onUnsupported(UnsupportedGltfExtensionException(it)) }
+    // A buffer this function made (a converted mesh, a transcoded GLB) is nobody else's either:
+    // the material fix may rewrite it in place instead of copying it.
+    val source = this
+    fun prepare(buffer: Buffer) =
+        GltfMaterialCompatibility.prepare(buffer, ownsSource = ownsSource || buffer !== source)
     return (converted as? ByteBuffer)
         ?.let { WebPTextureTranscoder.transcodeModel(it) }
-        ?.let { FilamentModelSource(GltfMaterialCompatibility.prepare(it.buffer), it.externalWebP) }
-        ?: FilamentModelSource(GltfMaterialCompatibility.prepare(converted), emptySet())
+        ?.let { FilamentModelSource(prepare(it.buffer), it.externalWebP) }
+        ?: FilamentModelSource(prepare(converted), emptySet())
 }
 
 /**

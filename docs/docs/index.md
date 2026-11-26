@@ -33,7 +33,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.72.0")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.76.0")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -95,7 +95,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.72.0")
+        implementation("io.github.sceneview:sceneview:4.76.0")
     }
     ```
 
@@ -104,7 +104,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.72.0")
+        implementation("io.github.sceneview:arsceneview:4.76.0")
     }
     ```
 

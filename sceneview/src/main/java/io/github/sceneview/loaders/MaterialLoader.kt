@@ -9,6 +9,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.gltfio.MaterialProvider.MaterialKey
 import com.google.android.filament.gltfio.UbershaderProvider
+import io.github.sceneview.isValid
 import io.github.sceneview.material.kMaterialDefaultMetallic
 import io.github.sceneview.material.kMaterialDefaultReflectance
 import io.github.sceneview.material.kMaterialDefaultRoughness
@@ -102,6 +103,7 @@ class MaterialLoader(
 
     private val materials = java.util.Collections.synchronizedList(mutableListOf<Material>())
     private val materialInstances = java.util.Collections.synchronizedList(mutableListOf<MaterialInstance>())
+    private var isDestroyed = false
 
     /**
      * Creates and returns a [Material] object.
@@ -117,8 +119,9 @@ class MaterialLoader(
      * @see MaterialLoader.loadMaterial
      */
     @MainThread
-    fun createMaterial(payload: Buffer): Material =
-        Material.Builder()
+    fun createMaterial(payload: Buffer): Material {
+        check(!isDestroyed) { "This MaterialLoader was destroyed" }
+        return Material.Builder()
             .payload(payload, payload.remaining())
             .build(engine)
             .also {
@@ -126,6 +129,7 @@ class MaterialLoader(
                 // Its default instance reads back without its Material on Filament 1.77+ too.
                 materialRegistry.register(it.defaultInstance, it)
             }
+    }
 
     @MainThread
     fun getUbershaderMaterial(
@@ -141,12 +145,15 @@ class MaterialLoader(
             UvCoordinate(1, 0)
         ),
         label: String? = null
-    ): Material? = ubershaderProvider.getMaterial(
-        config,
-        uvMap.flatMap { listOf(it.x, it.y) }.toIntArray(),
-        label
-    )?.also {
-        materials += it
+    ): Material? {
+        check(!isDestroyed) { "This MaterialLoader was destroyed" }
+        return ubershaderProvider.getMaterial(
+            config,
+            uvMap.flatMap { listOf(it.x, it.y) }.toIntArray(),
+            label
+        )?.also {
+            materials += it
+        }
     }
 
     @MainThread
@@ -165,6 +172,7 @@ class MaterialLoader(
         label: String? = null,
         extras: String? = null
     ): MaterialInstance? {
+        check(!isDestroyed) { "This MaterialLoader was destroyed" }
         val uvs = uvMap.flatMap { listOf(it.x, it.y) }.toIntArray()
         return ubershaderProvider.createMaterialInstance(config, uvs, label, extras)?.also {
             materialInstances += it
@@ -199,7 +207,11 @@ class MaterialLoader(
      */
     suspend fun loadMaterial(fileLocation: String): Material? =
         context.loadFileBuffer(fileLocation)?.let { buffer ->
-            withContext(Dispatchers.Main) {
+            buildOnMainUnlessGone(
+                isEngineValid = { engine.isValid },
+                canBuild = { !isDestroyed },
+                destroy = ::destroyMaterial,
+            ) {
                 createMaterial(buffer)
             }
         }
@@ -229,10 +241,13 @@ class MaterialLoader(
             }
         }
 
-    fun createInstance(material: Material) = material.createInstance().also {
-        materialInstances += it
-        // Its own wrapper keeps the Material; a read-back one (`getMaterialInstanceAt`) does not.
-        materialRegistry.register(it, material)
+    fun createInstance(material: Material): MaterialInstance {
+        check(!isDestroyed) { "This MaterialLoader was destroyed" }
+        return material.createInstance().also {
+            materialInstances += it
+            // Its own wrapper keeps the Material; a read-back one (`getMaterialInstanceAt`) does not.
+            materialRegistry.register(it, material)
+        }
     }
 
     /**
@@ -656,6 +671,8 @@ class MaterialLoader(
      * `DisposableEffect.onDispose`, so launched jobs never outlive the owning composition.
      */
     fun destroy() {
+        if (isDestroyed) return
+        isDestroyed = true
         coroutineScope.cancel()
 
         materialInstances.toList().forEach { destroyMaterialInstance(it) }

@@ -80,9 +80,11 @@ class SupportBillingTest {
             assertEquals(null, SupportBilling.inFlight)
             assertEquals(if (pending) 0 else 1, ShadowSupportBillingClient.consumptions)
             session.close()
+            // The sheet opened only when Play answered OK at launch; either way, nothing about the
+            // payment reaches analytics.
             assertEquals(
                 AnalyticsEvent.SupportPromptResult(
-                    if (pending) SupportResult.PurchasePending else SupportResult.TierTiny,
+                    if (atLaunch) SupportResult.Dismissed else SupportResult.Store,
                     SupportPromptSource.Home,
                 ),
                 events.last(),
@@ -138,7 +140,6 @@ internal fun resetSupportBillingForTest() {
     )
     ReflectionHelpers.getField<kotlinx.coroutines.Job?>(SupportBilling, "connectJob")?.cancel()
     ReflectionHelpers.setField(SupportBilling, "connectJob", null)
-    ReflectionHelpers.getField<MutableMap<String, SupportPromptAnalyticsSession>>(SupportBilling, "analyticsSessions").clear()
     ReflectionHelpers.getField<androidx.compose.runtime.MutableState<String?>>(SupportBilling, "inFlight\$delegate").value = null
     SupportBilling.qaPrices = null
     SupportBilling.qaUnavailable = false

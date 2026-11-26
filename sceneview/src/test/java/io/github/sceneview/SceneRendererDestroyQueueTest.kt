@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import android.os.Looper
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import com.google.android.filament.Engine
@@ -19,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /** Exercises the real no-swap-chain render path without a native Filament engine or surface. */
@@ -100,6 +102,40 @@ class SceneRendererDestroyQueueTest {
         assertFalse(first.renderFrame(0L) {})
         assertEquals(1, destroyed)
         assertFalse(queue.hasPending)
+    }
+
+    /**
+     * The shared default engine is never torn down, so a batch left by the last scene waits for
+     * the next scene's frames: draining it with no renderer would skip the grace period, and a
+     * caller-owned MaterialInstance that outlived its scene could still sample the texture.
+     */
+    @Test
+    fun resourcesLeftByTheLastSceneWaitForTheNextScenesGraceFrames() {
+        val scene = renderer()
+        var released = 0
+        queue.enqueueAction { released++ }
+        scene.destroy()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, released)
+        val next = renderer()
+        repeat(EngineDestroyQueue.GRACE_FRAMES - 1) { next.renderFrame(0L) {} }
+        assertEquals(0, released)
+        next.renderFrame(0L) {}
+        assertEquals(1, released)
+        next.destroy()
+    }
+
+    @Test
+    fun ownedEngineKeepsResourcesQueuedUntilFramesOrEngineTeardown() {
+        val scene = renderer()
+        var released = 0
+        queue.enqueueAction { released++ }
+        scene.destroy()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, released)
+        assertEquals(1, queue.size)
+        queue.drainAll()
+        assertEquals(1, released)
     }
 
     private fun renderer(): SceneRenderer {

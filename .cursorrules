@@ -18,9 +18,9 @@ SceneViewSwift (iOS, macOS, visionOS), Flutter and React Native are end of life 
 ## Android dependencies
 ```kotlin
 // 3D only
-implementation("io.github.sceneview:sceneview:4.72.0")
+implementation("io.github.sceneview:sceneview:4.76.0")
 // AR (includes 3D)
-implementation("io.github.sceneview:arsceneview:4.72.0")
+implementation("io.github.sceneview:arsceneview:4.76.0")
 ```
 
 ## Critical rules

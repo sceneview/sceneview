@@ -5,6 +5,9 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.model
+import io.github.sceneview.model.restPoseBoundingBox
 import kotlin.math.max
 import kotlin.math.min
 
@@ -42,6 +45,30 @@ internal val PlacementSize.scaleToUnits: Float?
         PlacementSize.RealWorld -> null
         is PlacementSize.FitInto -> meters
     }
+
+/**
+ * Above this longest side, in metres, [AutoPlacementModel]'s default does not take authored units
+ * for metres: a 1.8 m figure exported in centimetres reads 180 m, and a model that size stands
+ * around the phone, its faces behind the camera. A car, a shed or a room still passes.
+ */
+internal const val MAX_PLAUSIBLE_AUTHORED_METRES = 10f
+
+/** The longest side, in metres, an implausibly large model first shows at: something a room holds. */
+internal const val UNKNOWN_UNITS_FIT_METRES = 1f
+
+/**
+ * The `scaleToUnits` [AutoPlacementModel]'s default applies to a model whose longest authored
+ * side is [longestSideMetres]: [UNKNOWN_UNITS_FIT_METRES] above [MAX_PLAUSIBLE_AUTHORED_METRES],
+ * `null` (authored size, untouched) otherwise — and for an unusable size.
+ */
+internal fun implausibleAuthoredSizeFit(longestSideMetres: Float): Float? =
+    UNKNOWN_UNITS_FIT_METRES.takeIf {
+        longestSideMetres.isFinite() && longestSideMetres > MAX_PLAUSIBLE_AUTHORED_METRES
+    }
+
+/** The longest side of the bounds `ModelNode(scaleToUnits = …)` fits, in the asset's own units. */
+internal fun ModelInstance.longestAuthoredSide(): Float =
+    model.restPoseBoundingBox.halfExtent.let { 2f * max(it[0], max(it[1], it[2])) }
 
 /**
  * Width, height and depth, in metres, of an authored box with [halfExtent] once uniformly

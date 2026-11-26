@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.72.0)
+  Source of truth: /llms.txt  (SceneView 4.76.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.72.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.76.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -888,65 +888,69 @@ and surfaces in the Samples tab. This section is generated from the per-demo
 fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`
 by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).
 
-### Create & record
+### Models & cameras
 
-- `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
-- `matter` — Matter. Touch foam, oak and steel. Compare firmness and recovery.
+- `model-viewer` — Model Viewer. Explore a model in 3D or in your room.
+- `animation-physics` — Character animation. Play character animations under cinematic camera shots.
+- `camera-path` — Camera paths. Play, pause and scrub a keyframed camera orbit.
+- `camera-gestures` — Camera & object controls. Orbit with inertia, fly to a subject, named views.
+- `picking-collision` — Select objects. Tap objects to select and inspect them.
+- `splat-preview` — Photographic 3D. Explore a photographic capture made of Gaussian splats.
+
+### Materials & scenes
+
 - `materials` — Materials. Compare metal, glass, fabric and glow.
 - `lighting` — Lighting. Studio light, daylight, reflections, fog and shading.
-- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
-- `lines-paths` — Lines & Paths. Follow animated curves and paths.
-- `finger-drawing` — Finger Drawing. Paint in the air, then walk around it.
-- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `two-d-in-three-d` — 2D in 3D. Live UI, text, images and video in a 3D scene.
-- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `geometry` — Geometry Primitives. Show, hide and restyle the seven built-in shapes.
+- `contact-shadow-preview` — Contact shadows. Compare objects with and without a contact shadow.
+- `custom-geometry` — Custom geometry. A knot generated vertex by vertex.
+- `geometry` — Built-in shapes. Show, hide and restyle the seven built-in shapes.
+- `lines-paths` — Lines & curves. Follow animated curves and paths.
+- `spatial-audio` — Spatial audio. Positional sound that pans as you orbit.
+- `two-d-in-three-d` — Panels & media. Live UI, text, images and video in a 3D scene.
 
-### Developer tools
+### Play & feel
 
-- `ar-rerun` — 3D Scan. Move around a space and watch it take shape in 3D.
-- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
-- `debug-overlay` — Performance Test. Find the node budget for smooth 3D rendering on your device.
+- `matter` — Matter. Six surfaces. Touch, press and explore their character.
+- `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
+- `rolling-balls` — Rolling balls. Tilt a wooden board and send the balls rolling.
+- `finger-drawing` — Draw in 3D. Paint in the air, then walk around it.
 
 ### Place in AR
 
-- `ar-splat-room` — Your Room, as a Dollhouse. The room you recorded, standing on your table as a miniature.
-- `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
-- `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
-- `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
-- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-pool` — Pool in the garden. A real-size pool dug into your lawn.
-- `ar-measure` — Measure. Distances, walls rising to their height, whole rooms.
-- `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
-- `ar-surfaces` — Surfaces. Dots on floors, dashes on walls, rings on ceilings.
+- `ar-placement` — Place a model. Place objects on a floor or mount a TV on a wall.
+- `ar-orbital` — Catch the flyers. Catch four flyers circling you in AR.
+- `ar-pool` — Pool in your garden. A real-size pool dug into your lawn.
+- `ar-image` — Track an image. Detect and track reference images.
 - `spatial-answer` — Spatial answer. From dimensions to a 3D answer, then real-scale AR.
+- `ask-ar` — Ask in AR. Ask out loud, and the answer writes itself in the room.
 
-### View in 3D
+### Scan & understand
 
-- `splat-preview` — Real-World Scan. A tree stump and its raccoons, scanned with a phone.
-- `animation-physics` — Animation. Play character animations under cinematic camera shots.
-- `model-viewer` — Models. Explore a model in 3D or in your room.
-- `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
-- `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
-- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
-- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
-
-### Understand the world
-
-- `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
-- `ar-people-occlusion` — People Occlusion. A person walking in front hides the model.
-- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
+- `ar-rerun` — 3D Scan. Move around a space and watch it take shape in 3D.
+- `ar-splat-room` — Room model. The room you recorded, standing on your table as a miniature.
+- `ar-measure` — Measure your space. Distances, walls rising to their height, whole rooms.
+- `ar-depth-occlusion` — Objects hide objects. Real surfaces hide virtual content.
+- `ar-people-occlusion` — People hide objects. A person walking in front hides the model.
+- `ar-face` — Face effects. Face mesh tracking with 3D overlays.
+- `ar-body-tracker` — Squat coach. Counts your squats out loud and tells you when to go lower.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
-- `ar-body-tracker` — Squat Coach. Counts your squats out loud and tells you when to go lower.
-- `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
-- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
-- `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-depth-of-field` — Portrait focus. Keep the sneaker sharp, blur the room behind it.
-- `ar-point-cloud` — Point Cloud. See the points your camera tracks.
-- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
-- `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
-- `ar-image-stabilization` — Image Stabilization. Steadies the camera feed. The difference is subtle.
-- `ar-xr` — Android XR (preview). Hand skeleton and face mesh on Android XR headsets.
+- `ar-scene-semantics` — Recognise outdoor surfaces. Recognize parts of the outdoor scene.
+- `ar-depth-of-field` — Portrait focus. Keep the toy car sharp, blur the room behind it.
+
+### Developer tools
+
+- `model-thumbnails` — Model thumbnails. A model library drawn off screen, with no 3D view.
+- `debug-overlay` — Performance test. Find the node budget for smooth 3D rendering on your device.
+- `ar-plane-node` — Surface lifecycle. Watch surfaces appear and update.
+- `ar-surfaces` — Surface rendering. Dots on floors, dashes on walls, rings on ceilings.
+- `ar-depth-visualization` — Depth map. False-color depth map blended with camera.
+- `ar-point-cloud` — Feature points. See the points your camera tracks.
+- `ar-raw-depth-point-cloud` — Depth points. Explore the shape of your surroundings.
+- `ar-image-stabilization` — Camera stabilisation. Steadies the camera feed. The difference is subtle.
+- `ar-cloud-anchor` — Shared anchors. Persistent anchors shared across devices.
+- `ar-geospatial-anchors` — Location anchors. Place objects at outdoor locations.
+- `ar-ml-object-label` — Object labels. Recognize objects and label them in space.
+- `ar-xr` — Reference poses (preview). Hand skeleton and face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->
 

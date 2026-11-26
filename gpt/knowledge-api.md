@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.72.0)
+  Source of truth: /llms.txt  (SceneView 4.76.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.72.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.76.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -57,7 +57,7 @@ Every page below is also served as Markdown: replace the trailing `/` with `.md`
 
 ## Start here — complete Android screens
 
-These examples compile as they are against `io.github.sceneview:arsceneview:4.72.0` (CI builds every
+These examples compile as they are against `io.github.sceneview:arsceneview:4.76.0` (CI builds every
 Kotlin block of this file). Put the `.glb` under `src/main/assets/models/`.
 
 **A 3D model the user turns with a finger.** The default camera orbits on one-finger drag, zooms on
@@ -872,6 +872,7 @@ Key behaviors:
 - `centerOrigin`: aligns the model's bounding box with the node origin — the AABB point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) lands on the node origin, whatever the asset's authored pivot. `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned (model sits on the origin). `null` = keep the authored pivot. Composes **additively** with `position` — the alignment offset (`-(center + origin * halfExtent) * scale`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` is left at its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - `autoAnimate = true` + `animationName = null`: plays ALL animations.
 - `animationName = "Walk"`: plays only that named animation (stops previous). Reactive to Compose state.
+- **One `ModelInstance` per `ModelNode`.** Two nodes on one instance move the same entities and draw a ghost; SceneView logs a warning when it sees it. For several copies, call `rememberModelInstance` once per node, or `modelLoader.createInstancedModel(assetFileLocation, count)` and give each node its own element of the list.
 
 Reactive animation example:
 ```kotlin
@@ -1487,7 +1488,9 @@ rings so the seam has no crease.
     radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
     radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
     closed: Boolean = false,                      // join the last point back to the first
-    caps: Boolean = true,                         // fill open ends with a disc
+    capStyle: Tube.CapStyle = Tube.CapStyle.Flat, // None | Flat (disc) | Round (hemisphere); ignored when closed
+    radii: List<Float>? = null,                   // one radius per point, metres; null = `radius` everywhere
+    capacity: Int = 0,                            // 0 = exactly points.size; > 0 = reserve max(capacity, points.size)
     materialInstance: MaterialInstance? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
@@ -1501,7 +1504,35 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
-That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+`caps: Boolean` still compiles as a deprecated alias (`true` = `Flat`, `false` = `None`).
+
+**A stroke that grows** (finger drawing, a trail, a route being recorded) passes a `capacity`.
+One rule: `capacity = 0` (the default) is the old exact-size behaviour, buffers sized to
+`points.size`; any positive value reserves `max(capacity, points.size)` points. While
+`points.size <= capacity` an update rewrites the same vertex buffer, never touches the index
+buffer, and only the live part is drawn (the renderable's index range and bounding box follow
+every update). Past the capacity the tube reallocates once, to `max(points.size, 2 × capacity)`;
+reserved buffers never shrink.
+
+```kotlin
+import kotlin.math.PI
+import kotlin.math.sin
+
+// A brush stroke: thick in the middle, tapering to round ends, growing without reallocating.
+val paint = remember(materialLoader) { materialLoader.createColorInstance(colorOf(r = 0.96f, g = 0.36f, b = 0.16f)) }
+val stroke = List(40) { i -> Position(x = i * 0.01f, y = 0.05f * sin(i * 0.2f)) }
+val widths = List(stroke.size) { i -> 0.004f + 0.006f * sin(PI.toFloat() * i / (stroke.size - 1)) }
+TubeNode(
+    points = stroke,
+    radii = widths,                               // one per point, metres
+    radialSegments = 12,
+    capStyle = Tube.CapStyle.Round,
+    capacity = 256,                               // room to grow before any reallocation
+    materialInstance = paint
+)
+```
+
+The exact-size rule above holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
 an update that keeps the vertex count, the per-submesh index counts and the attribute layout
 (normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
 `slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
@@ -1816,9 +1847,12 @@ tracked): content placed on a table that must stand on the floor drops by
 `floorHeight - pose.ty()`.
 
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
-while rotating/scaling, and constrains dragging to supported plane geometry. Its
-0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
-trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base by default;
+while rotating/scaling, and constrains dragging to supported plane geometry. By default
+it keeps the asset's authored metres (**Actual size**, as AR Quick Look and Scene Viewer);
+`scaleToUnits = 0.3f` fits the longest dimension into 0.3 m (**Preview size**, the default
+up to 4.72) for assets whose units are unknown. Without `scaleToUnits`, a model longer
+than 10 m (a file in centimetres) first shows fitted into 1 m, not at real size;
+`size = PlacementSize.RealWorld` trusts the authored metres. Scale limits are 25–400% of that base by default;
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
@@ -1831,7 +1865,7 @@ bottom-centre rests on the contact point and the model's dimensions are publishe
 `assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
 a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
 frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
-following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+following the pinch) and `isAtRealWorldSize` (authored size — `RealWorld`, or the default when the 10 m rule does not apply — and exactly 100 %). Let the user pick
 a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
 `scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
 `false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`
@@ -4760,8 +4794,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
-| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
-| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
+| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper; disposal frees the view and the `ColorGrading` it built, never one you set (#5232) |
+| `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434); disposal frees it like `rememberView` |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
@@ -5839,7 +5873,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.72.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.76.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -6044,7 +6078,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.72.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.76.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 

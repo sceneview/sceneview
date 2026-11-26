@@ -1,0 +1,19 @@
+// Opt-in without editing the demo's shared build file:
+// ./gradlew -I samples/android-demo/ask-ar-live.init.gradle -PaskArProxyUrl=https://... <task>
+gradle.beforeProject { project ->
+    if (project.path == ':samples:android-demo') {
+        project.pluginManager.withPlugin('com.android.application') {
+            def url = project.providers.gradleProperty('askArProxyUrl').getOrElse('').trim()
+            if (url) {
+                def parsed = new URI(url)
+                if (parsed.scheme != 'https' || !parsed.host || parsed.userInfo ||
+                        parsed.query || parsed.fragment || !(parsed.path in ['', '/'])) {
+                    throw new GradleException('askArProxyUrl must be an HTTPS origin without credentials')
+                }
+            }
+            project.extensions.getByName('android').buildFeatures.resValues = true
+            project.extensions.getByName('android').defaultConfig.resValue(
+                    'string', 'ask_ar_proxy_url', url)
+        }
+    }
+}

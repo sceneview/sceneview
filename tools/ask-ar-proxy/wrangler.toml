@@ -1,0 +1,13 @@
+name = "ask-ar-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-11-25"
+# Only the production workers.dev route answers: no per-version preview URLs.
+preview_urls = false
+
+[vars]
+ASK_CLIENT_TAG = "sceneview-ask-ar-v1"
+
+[[ratelimits]]
+name = "ASK_RATE_LIMITER"
+namespace_id = "735501"
+simple = { limit = 10, period = 60 }

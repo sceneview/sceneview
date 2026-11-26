@@ -9,6 +9,7 @@
 	  - Coarse Location      (Analytics)        country / region Analytics derives from
 	                                            the IP address; no GPS, no location API
 	  - Product Interaction  (Analytics)        events: sample_open, screen_view, ...
+	  - Search History       (Analytics)        the search event's search term
 	  - Other Usage Data     (Analytics, App    Firebase files FCM push delivery here
 	                          Functionality)
 	  - Crash Data           (App Functionality) Crashlytics reports

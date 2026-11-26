@@ -20,10 +20,10 @@ apps, Philips Hue, Medal and IKEA.
 
 | You are building with | Dependency | Entry point |
 |---|---|---|
-| Jetpack Compose, 3D | `io.github.sceneview:sceneview:4.72.0` | `SceneView { }` |
-| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.72.0` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
+| Jetpack Compose, 3D | `io.github.sceneview:sceneview:4.76.0` | `SceneView { }` |
+| Jetpack Compose, AR (ARCore) | `io.github.sceneview:arsceneview:4.76.0` | `ARSceneView { }`, `PlacementScene`, `AutoPlacementScene` |
 | Android Views / XML layouts | the same artifacts | a `ComposeView` hosting `SceneView { }` |
-| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.72.0` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
+| Kotlin / Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.76.0` | `SceneViewer(model = …)` in `commonMain` (viewer, no AR) |
 | SwiftUI — iOS, macOS, visionOS (end of life at 4.68.0) | Swift Package `https://github.com/sceneview/sceneview.git` | `SceneView { }`, `ARSceneView(…)` |
 | Web | script tags or `npm install sceneview-web` | `SceneView.modelViewer("canvas-id", "model.glb")` |
 | Flutter / React Native (end of life at 4.68.0) | `flutter_sceneview` / `@sceneview-sdk/react-native` | [Flutter](quickstart-flutter.md), [React Native](quickstart-react-native.md) |
@@ -34,7 +34,7 @@ apps, Philips Hue, Medal and IKEA.
 
 ```kotlin
 // app/build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.72.0")
+implementation("io.github.sceneview:sceneview:4.76.0")
 ```
 
 ```kotlin
@@ -57,7 +57,7 @@ Requirements and the step-by-step: [Android quickstart](quickstart.md).
 
 ```kotlin
 // app/build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.72.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.76.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -105,7 +105,7 @@ container.addView(
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.72.0")
+implementation("io.github.sceneview:sceneview-compose:4.76.0")
 ```
 
 ```kotlin
@@ -178,8 +178,8 @@ The app's `Info.plist` needs `NSCameraUsageDescription`. More: [Apple quickstart
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.72.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.72.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 

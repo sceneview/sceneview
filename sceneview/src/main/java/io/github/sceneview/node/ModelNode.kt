@@ -473,6 +473,7 @@ open class ModelNode(
         // A replacement wrapper starts from the loaded root, not the last placement's
         // scale/origin correction. Weak keys leave the instance's lifetime with its owner.
         transform = initialModelTransforms.getOrPut(modelInstance) { Transform(transform) }
+        warnIfInstanceShared()
         attachToParents(this, nodes)
         // Sanitize renderable entities with empty AABBs to prevent Filament crash.
         // Filament 1.70+ enforces: "AABB can't be empty, unless culling is disabled
@@ -964,6 +965,32 @@ internal fun attachToParents(
 }
 
 private val initialModelTransforms = WeakHashMap<ModelInstance, Transform>()
+
+private val modelInstanceOwners = ModelInstanceOwners<ModelInstance, ModelNode> { !it.isDestroyed }
+
+/**
+ * One [ModelInstance] per [ModelNode] (#5272): logs a warning when another node still in use shows
+ * this instance. Checked after the current main-thread message, so a node that replaces another in
+ * the same recomposition (created before the old one is destroyed) is not reported.
+ */
+private fun ModelNode.warnIfInstanceShared() {
+    val instance = modelInstance
+    modelInstanceOwners.claim(instance, this)
+    val node = this
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
+        if (node.isDestroyed) return@post
+        val others = modelInstanceOwners.othersThan(instance, node)
+        if (others.isNotEmpty()) {
+            android.util.Log.w(
+                "SceneView",
+                "This ModelInstance is shown by ${others.size + 1} ModelNodes at once. Each node needs " +
+                    "its own instance: nodes sharing one move the same entities and draw a ghost. " +
+                    "Load one per node (rememberModelInstance per node, or " +
+                    "modelLoader.createInstancedModel(..., count) for copies of one model).",
+            )
+        }
+    }
+}
 
 /**
  * The root entity of [this], checked before the [ModelNode] super constructor reads it: past

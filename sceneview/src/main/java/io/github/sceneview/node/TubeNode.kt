@@ -45,6 +45,7 @@ open class TubeNode private constructor(
     builderApply = builderApply
 ) {
 
+    /** Creates a node that renders an existing [geometry]. */
     constructor(
         engine: Engine,
         geometry: Tube,
@@ -58,6 +59,43 @@ open class TubeNode private constructor(
         builderApply = builderApply
     )
 
+    /**
+     * Creates a tube from [points]. [radii] optionally supplies one radius per point, while
+     * [capacity] reserves point slots for growth and [capStyle] chooses the open-end shape.
+     */
+    constructor(
+        engine: Engine,
+        points: List<Position> = Tube.DEFAULT_POINTS,
+        radius: Float = Tube.DEFAULT_RADIUS,
+        radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
+        closed: Boolean = Tube.DEFAULT_CLOSED,
+        capStyle: Tube.CapStyle = Tube.DEFAULT_CAP_STYLE,
+        radii: List<Float>? = null,
+        capacity: Int = 0,
+        materialInstance: MaterialInstance? = null,
+        builderApply: RenderableManager.Builder.() -> Unit = {}
+    ) : this(
+        engine = engine,
+        geometry = Tube.Builder()
+            .points(points)
+            .radius(radius)
+            .radii(radii)
+            .radialSegments(radialSegments)
+            .closed(closed)
+            .capStyle(capStyle)
+            .capacity(capacity)
+            .build(engine),
+        materialInstance = materialInstance,
+        builderApply = builderApply
+    )
+
+    /**
+     * Binary bridge for code compiled against the flat-cap constructor. It keeps the JVM
+     * signature and the original `caps = true` default, so an old call that omitted `caps` still
+     * gets flat caps. Hidden so it does not compete with the `capStyle` constructor in source.
+     */
+    @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
+    @Suppress("DEPRECATION")
     constructor(
         engine: Engine,
         points: List<Position> = Tube.DEFAULT_POINTS,
@@ -68,29 +106,81 @@ open class TubeNode private constructor(
         materialInstance: MaterialInstance? = null,
         builderApply: RenderableManager.Builder.() -> Unit = {}
     ) : this(
-        engine = engine,
-        geometry = Tube.Builder()
-            .points(points)
-            .radius(radius)
-            .radialSegments(radialSegments)
-            .closed(closed)
-            .caps(caps)
-            .build(engine),
-        materialInstance = materialInstance,
-        builderApply = builderApply
+        engine, points, radius, radialSegments, closed, Tube.legacyCapStyle(caps),
+        null, 0, materialInstance, builderApply,
+    )
+
+    /**
+     * Source-compatible flat-cap constructor: `true` is flat caps, `false` none. `caps` is
+     * nullable only so its JVM signature differs from the hidden binary bridge; `null` means the
+     * old default, flat caps.
+     */
+    @Deprecated(
+        "Use capStyle",
+        ReplaceWith("TubeNode(engine, points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None, materialInstance = materialInstance, builderApply = builderApply)"),
+    )
+    constructor(
+        engine: Engine,
+        points: List<Position> = Tube.DEFAULT_POINTS,
+        radius: Float = Tube.DEFAULT_RADIUS,
+        radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
+        closed: Boolean = Tube.DEFAULT_CLOSED,
+        caps: Boolean?,
+        materialInstance: MaterialInstance? = null,
+        builderApply: RenderableManager.Builder.() -> Unit = {}
+    ) : this(
+        engine, points, radius, radialSegments, closed, Tube.legacyCapStyle(caps != false),
+        null, 0, materialInstance, builderApply,
     )
 
     /**
      * Re-sweeps the tube and re-uploads it. Cheap enough to call every frame while the point
-     * count is unchanged — see [Tube.update] for what is and is not reallocated.
+     * count stays within [capacity] — see [Tube.update] for what is and is not reallocated.
+     * [radii] is one radius per point or `null` for [radius]; [capStyle] is ignored when closed.
      */
     fun updateGeometry(
         points: List<Position> = geometry.points,
         radius: Float = geometry.radius,
         radialSegments: Int = geometry.radialSegments,
         closed: Boolean = geometry.closed,
-        caps: Boolean = geometry.caps
+        capStyle: Tube.CapStyle = geometry.capStyle,
+        radii: List<Float>? = geometry.radii,
+        capacity: Int = 0,
     ) {
-        geometry.update(engine, points, radius, radialSegments, closed, caps)
+        geometry.update(engine, points, radius, radialSegments, closed, capStyle, radii, capacity)
     }
+
+    /**
+     * Binary bridge for code compiled against the flat-cap API. It keeps the JVM name and the
+     * original default (`caps` defaults to the current caps), so an old call that omitted `caps`
+     * keeps them. Hidden so it does not compete with the `capStyle` overload in source.
+     */
+    @Deprecated("Use capStyle", level = DeprecationLevel.HIDDEN)
+    fun updateGeometry(
+        points: List<Position> = geometry.points,
+        radius: Float = geometry.radius,
+        radialSegments: Int = geometry.radialSegments,
+        closed: Boolean = geometry.closed,
+        caps: Boolean = geometry.capStyle != Tube.CapStyle.None,
+    ) = updateGeometry(
+        points, radius, radialSegments, closed,
+        Tube.legacyCapStyle(caps, geometry.capStyle), geometry.radii, 0,
+    )
+
+    /** Source-compatible flat-cap update: `true` keeps the current caps, or adds flat ones. */
+    @Deprecated(
+        "Use capStyle",
+        ReplaceWith("updateGeometry(points, radius, radialSegments, closed, if (caps) Tube.CapStyle.Flat else Tube.CapStyle.None)"),
+    )
+    @JvmName("updateGeometryWithCaps")
+    fun updateGeometry(
+        points: List<Position> = geometry.points,
+        radius: Float = geometry.radius,
+        radialSegments: Int = geometry.radialSegments,
+        closed: Boolean = geometry.closed,
+        caps: Boolean,
+    ) = updateGeometry(
+        points, radius, radialSegments, closed,
+        Tube.legacyCapStyle(caps, geometry.capStyle), geometry.radii, 0,
+    )
 }
