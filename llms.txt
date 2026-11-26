@@ -1040,6 +1040,7 @@ Key behaviors:
 - `centerOrigin`: aligns the model's bounding box with the node origin — the AABB point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) lands on the node origin, whatever the asset's authored pivot. `Position(0,0,0)` = center model. `Position(0,-1,0)` = center horizontal, bottom-aligned (model sits on the origin). `null` = keep the authored pivot. Composes **additively** with `position` — the alignment offset (`-(center + origin * halfExtent) * scale`) is added to `position`, so a non-zero `centerOrigin` takes effect even when `position` is left at its default, and the two can be combined (bottom-align *and* place at a point). Applied once on creation (not reactive, like `scaleToUnits`).
 - `autoAnimate = true` + `animationName = null`: plays ALL animations.
 - `animationName = "Walk"`: plays only that named animation (stops previous). Reactive to Compose state.
+- **One `ModelInstance` per `ModelNode`.** Two nodes on one instance move the same entities and draw a ghost; SceneView logs a warning when it sees it. For several copies, call `rememberModelInstance` once per node, or `modelLoader.createInstancedModel(assetFileLocation, count)` and give each node its own element of the list.
 
 Reactive animation example:
 ```kotlin
