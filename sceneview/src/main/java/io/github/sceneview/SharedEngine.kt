@@ -38,7 +38,6 @@ internal class EnginePool<C : Any, E : Any>(
     private val destroyOwned: (E, C) -> Unit,
     private val destroyContext: (C) -> Unit,
     private val checkThread: () -> Unit = {},
-    private val onSharedCreated: (E) -> Unit = {},
     private val onSharedAcquired: (C) -> Unit = {},
 ) {
     private var shared: Pair<C, E>? = null
@@ -53,17 +52,11 @@ internal class EnginePool<C : Any, E : Any>(
         val isShared = contextCreator === defaultContextCreator &&
             engineCreator === defaultEngineCreator
         val (context, engine) = if (isShared) {
-            shared ?: create(contextCreator, engineCreator).also {
-                onSharedCreated(it.second)
-                shared = it
-            }
+            acquireShared(contextCreator, engineCreator)
         } else {
             create(contextCreator, engineCreator)
         }
-        if (isShared) {
-            onSharedAcquired(context)
-            referenceCount++
-        }
+        if (isShared) referenceCount++
         return EngineLease(engine) {
             checkThread()
             if (isShared) {
@@ -75,6 +68,30 @@ internal class EnginePool<C : Any, E : Any>(
                 destroyOwned(engine, context)
             }
         }
+    }
+
+    /**
+     * The retained pair, made current again. If the system invalidated its context (a GPU reset)
+     * and no scene still uses it, the pair is dropped and a new one created: otherwise every later
+     * screen would retry the dead context until the process restarts. With scenes still on it,
+     * they own the failure and it propagates.
+     */
+    private fun acquireShared(contextCreator: () -> C, engineCreator: (C) -> E): Pair<C, E> {
+        shared?.let { retained ->
+            try {
+                onSharedAcquired(retained.first)
+                return retained
+            } catch (lost: RuntimeException) {
+                if (referenceCount > 0) throw lost
+                // Dropped, not destroyed: tearing down an engine whose backend context is gone
+                // can abort natively, and one stale pair after a GPU reset is a bounded cost.
+                shared = null
+            }
+        }
+        val created = create(contextCreator, engineCreator)
+        shared = created
+        onSharedAcquired(created.first)
+        return created
     }
 
     private fun create(contextCreator: () -> C, engineCreator: (C) -> E): Pair<C, E> {

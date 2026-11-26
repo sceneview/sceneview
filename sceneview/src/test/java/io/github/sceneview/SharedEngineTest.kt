@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SharedEngineTest {
@@ -106,6 +107,44 @@ class SharedEngineTest {
         assertSame(shared.engine.context, currentContext)
         next.release()
         assertEquals(listOf(owned.engine), destroyed)
+    }
+
+    @Test
+    fun `a shared context lost while unused is replaced on the next acquisition`() {
+        val lost = mutableSetOf<Context>()
+        val recovering = EnginePool(
+            defaultContextCreator = { Context() },
+            defaultEngineCreator = { context: Context -> Engine(context) },
+            destroyOwned = { engine, _ -> destroyed += engine },
+            destroyContext = { destroyedContexts += it },
+            onSharedAcquired = { check(it !in lost) { "eglMakeCurrent failed" } },
+        )
+        val first = recovering.acquire()
+        first.release()
+        lost += first.engine.context
+        val next = recovering.acquire()
+        assertNotSame(first.engine, next.engine)
+        assertEquals(emptyList<Engine>(), destroyed)
+        assertSame(next.engine, recovering.acquire().engine)
+        assertEquals(2, recovering.referenceCount)
+    }
+
+    @Test
+    fun `a shared context lost while a scene still uses it is not replaced under that scene`() {
+        val lost = mutableSetOf<Context>()
+        val recovering = EnginePool(
+            defaultContextCreator = { Context() },
+            defaultEngineCreator = { context: Context -> Engine(context) },
+            destroyOwned = { engine, _ -> destroyed += engine },
+            destroyContext = { destroyedContexts += it },
+            onSharedAcquired = { check(it !in lost) { "eglMakeCurrent failed" } },
+        )
+        val first = recovering.acquire()
+        lost += first.engine.context
+        assertTrue(runCatching { recovering.acquire() }.isFailure)
+        assertEquals(emptyList<Engine>(), destroyed)
+        assertEquals(1, recovering.referenceCount)
+        first.release()
     }
 
     @Test
