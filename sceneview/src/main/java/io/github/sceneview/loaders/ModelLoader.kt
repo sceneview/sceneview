@@ -598,13 +598,17 @@ class ModelLoader(
         // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
         // main thread. The extension check runs first, so its typed refusal comes before any other.
         val (source, gltf) = try {
-            withContext(Dispatchers.Default) {
-                // The loader read these bytes itself: nobody else holds them.
-                val prepared = buffer.toFilamentModelSource(fileLocation, unit, onUnsupported, ownsSource = true)
-                // Neither step suspends: an abandoned load would otherwise run both, holding the file.
-                ensureActive()
-                prepared to GltfLimits.parse(prepared.buffer)
-            }
+            // A GLB that has to be copied to drop an extension (see GltfMaterialCompatibility) needs
+            // a second array of its size: the same heap as the read, the same recovery.
+            afterAbandonedLoadsOnOutOfMemory(fileLocation, "prepare") {
+                withContext(Dispatchers.Default) {
+                    // The loader read these bytes itself: nobody else holds them.
+                    val prepared = buffer.toFilamentModelSource(fileLocation, unit, onUnsupported, ownsSource = true)
+                    // Neither step suspends: an abandoned load would otherwise run both, holding the file.
+                    ensureActive()
+                    prepared to GltfLimits.parse(prepared.buffer)
+                }
+            } ?: return null
         } catch (unreadable: RuntimeException) {
             // An unsupported format, or a file its extension sent to a converter that cannot parse
             // it (an HTML error page saved as `.stl`): logged, then the result is `null`.
@@ -730,37 +734,50 @@ class ModelLoader(
     }
 
     /**
-     * Reads [fileLocation] for [loadModelThen]. When the Java heap has no room left for it, as on a
-     * 16 MiB Android 8 heap while the previous screen's abandoned load still holds its own copy
-     * (#5271), it waits for the abandoned loads to end, then reads once more. A second failure is
-     * logged and the load fails (`null`): the model does not show, and the app keeps running.
+     * Reads [fileLocation] for [loadModelThen], with the recovery of [afterAbandonedLoadsOnOutOfMemory].
      */
-    private suspend fun readModelFile(fileLocation: String, onRead: ((Float) -> Unit)?): Buffer? {
+    private suspend fun readModelFile(fileLocation: String, onRead: ((Float) -> Unit)?): Buffer? =
+        afterAbandonedLoadsOnOutOfMemory(fileLocation, "read") {
+            FileLoader.loadFileBuffer(context, fileLocation, onRead)
+        }
+
+    /**
+     * Runs [step], one of the large allocations of a load ([what]: reading the file, or copying
+     * it). When the Java heap has no room for it, as on a 16 MiB Android 8 heap while the previous
+     * screen's abandoned load still holds its own copy (#5271), it waits for the abandoned loads
+     * to end, then runs [step] once more. A second failure is logged and the load fails (`null`):
+     * the model does not show, and the app keeps running. [step] must be safe to run twice.
+     */
+    private suspend fun <T : Any> afterAbandonedLoadsOnOutOfMemory(
+        fileLocation: String,
+        what: String,
+        step: suspend () -> T?,
+    ): T? {
         try {
-            return FileLoader.loadFileBuffer(context, fileLocation, onRead)
+            return step()
         } catch (outOfMemory: OutOfMemoryError) {
             // An abandoned load unwinds here: it has nothing to retry for.
             currentCoroutineContext().ensureActive()
             Log.w(
                 TAG,
-                "Not enough Java heap to read $fileLocation (${outOfMemory.message}); waiting for " +
-                    "${ModelLoadsInFlight.abandonedCount} abandoned load(s), then reading it again",
+                "Not enough Java heap to $what $fileLocation (${outOfMemory.message}); waiting for " +
+                    "${ModelLoadsInFlight.abandonedCount} abandoned load(s), then trying again",
             )
         }
         val settled = ModelLoadsInFlight.awaitAbandoned(ABANDONED_LOAD_WAIT_MS)
         currentCoroutineContext().ensureActive()
         if (!settled) {
-            Log.w(TAG, "Abandoned loads still running after $ABANDONED_LOAD_WAIT_MS ms; reading $fileLocation again anyway")
+            Log.w(TAG, "Abandoned loads still running after $ABANDONED_LOAD_WAIT_MS ms; trying $fileLocation again anyway")
         }
         // Best effort: what the abandoned loads held is unreachable now, not yet collected.
         Runtime.getRuntime().gc()
         return try {
-            FileLoader.loadFileBuffer(context, fileLocation, onRead)
+            step()
         } catch (outOfMemory: OutOfMemoryError) {
             currentCoroutineContext().ensureActive()
             Log.e(
                 TAG,
-                "Could not load $fileLocation: not enough Java heap to read it (limit " +
+                "Could not load $fileLocation: not enough Java heap to $what it (limit " +
                     "${Runtime.getRuntime().maxMemory() shr 20} MiB, ${outOfMemory.message})",
             )
             null
