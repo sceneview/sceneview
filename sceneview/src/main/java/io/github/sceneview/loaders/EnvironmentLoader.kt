@@ -58,6 +58,7 @@ class EnvironmentLoader(
     val iblPrefilter = IBLPrefilter(engine)
 
     private val environments = mutableListOf<Environment>()
+    private var isDestroyed = false
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
@@ -105,6 +106,7 @@ class EnvironmentLoader(
         textureOptions: HDRLoader.Options = HDRLoader.Options(),
         createSkybox: Boolean = true
     ): Environment? {
+        check(!isDestroyed) { "This EnvironmentLoader was destroyed" }
         // HDRLoader decodes and uploads in a single JNI call, so this overload has to run its
         // decode on the calling (main) thread. [loadHDREnvironment] decodes off it instead.
         val equirect = HDRLoader.createTexture(
@@ -180,6 +182,7 @@ class EnvironmentLoader(
         // MaterialLoader.loadMaterial / ModelLoader.loadModel.
         return buildOnMainUnlessGone(
             isEngineValid = { engine.isValid },
+            canBuild = { !isDestroyed },
             destroy = ::destroyEnvironment,
         ) {
             if (image != null) {
@@ -424,6 +427,7 @@ class EnvironmentLoader(
         iblBuffer: Buffer? = null,
         skyboxBuffer: Buffer? = null
     ): Environment {
+        check(!isDestroyed) { "This EnvironmentLoader was destroyed" }
         val indirectLightBundle = iblBuffer?.let { KTX1Loader.createIndirectLight(engine, it) }
         val skyboxBundle = skyboxBuffer?.let { KTX1Loader.createSkybox(engine, it) }
         return createEnvironment(
@@ -540,6 +544,7 @@ class EnvironmentLoader(
         val skyboxBuffer = skyboxUrl?.let { context.loadFileBuffer(skyboxUrl) }
         val environment = buildOnMainUnlessGone(
             isEngineValid = { engine.isValid },
+            canBuild = { !isDestroyed },
             destroy = ::destroyEnvironment,
         ) {
             createKTX1Environment(
@@ -547,7 +552,9 @@ class EnvironmentLoader(
                 skyboxBuffer = skyboxBuffer
             )
         }
-        return checkNotNull(environment) { "Engine destroyed while the KTX environment loaded" }
+        return checkNotNull(environment) {
+            "EnvironmentLoader or Engine destroyed while the KTX environment loaded"
+        }
     }
 
     /**
@@ -613,6 +620,8 @@ class EnvironmentLoader(
      * outlives the owning composition.
      */
     fun destroy() {
+        if (isDestroyed) return
+        isDestroyed = true
         runCatching { coroutineScope.cancel() }
         clear()
 
@@ -632,6 +641,8 @@ class EnvironmentLoader(
      * ([io.github.sceneview.safeDestroy]) runs a release still pending first.
      */
     internal fun destroyWhenBackendIdle() {
+        if (isDestroyed) return
+        isDestroyed = true
         runCatching { coroutineScope.cancel() }
         clear()
 
@@ -645,7 +656,8 @@ class EnvironmentLoader(
 }
 
 /**
- * Runs [build] on [mainDispatcher] unless the caller is already cancelled or the engine is gone,
+ * Runs [build] on [mainDispatcher] unless the caller is cancelled, its loader rejects [canBuild],
+ * or the engine is gone,
  * and hands back what it built — the Main half of an off-main load (#4174).
  *
  * The build is not wrapped in `NonCancellable`: a composable that leaves while the decode runs
@@ -654,10 +666,14 @@ class EnvironmentLoader(
  * destroyed in the same frame. [build] does not suspend, so once started it runs to completion;
  * if the caller was cancelled meanwhile, `withContext` throws on return and what was built is
  * destroyed — while the engine is still alive, since a dead engine already reclaimed it.
+ * [canBuild] is checked only before creation: a loader may leave while a caller in another scope
+ * reads the file, even though a shared engine remains alive. Orphan cleanup still checks the
+ * engine alone so rejecting new work cannot suppress a release.
  */
 internal suspend fun <T : Any> buildOnMainUnlessGone(
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     isEngineValid: () -> Boolean,
+    canBuild: () -> Boolean = { true },
     destroy: (T) -> Unit,
     build: () -> T?,
 ): T? {
@@ -665,7 +681,7 @@ internal suspend fun <T : Any> buildOnMainUnlessGone(
     try {
         withContext(mainDispatcher) {
             ensureActive()
-            if (isEngineValid()) built = build()
+            if (canBuild() && isEngineValid()) built = build()
         }
     } catch (cancellation: CancellationException) {
         built?.let { orphan ->

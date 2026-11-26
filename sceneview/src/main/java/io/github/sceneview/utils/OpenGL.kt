@@ -42,6 +42,16 @@ object OpenGL {
         return pbufferContext.context
     }
 
+    /** Restores the shared context after another engine changed this thread's current context. */
+    internal fun makeEglContextCurrent(context: EGLContext) {
+        if (EGL14.eglGetCurrentContext() == context) return
+        val surface = checkNotNull(pbuffers.surface(context)) { "EGL context has no owned pbuffer" }
+        val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+            failEgl("eglMakeCurrent", EGL14.eglGetError())
+        }
+    }
+
     /**
      * [createEglContext], keeping the display and the 1×1 pbuffer the context was made current on,
      * so that the context can be released on this thread and made current on another one.

@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import android.os.Looper
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import com.google.android.filament.Engine
@@ -19,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /** Exercises the real no-swap-chain render path without a native Filament engine or surface. */
@@ -100,6 +102,83 @@ class SceneRendererDestroyQueueTest {
         assertFalse(first.renderFrame(0L) {})
         assertEquals(1, destroyed)
         assertFalse(queue.hasPending)
+    }
+
+    @Test
+    fun sharedEngineReleasesTheLastScenesResourcesAfterDisposalAndBackendIdle() {
+        val first = renderer()
+        val second = renderer()
+        val idleReleases = mutableListOf<() -> Unit>()
+        val released = mutableListOf<String>()
+        queue.enableIdleCleanup { idleReleases += it }
+        queue.enqueueAction { released += "texture" }
+        queue.enqueueAction { released += "stream" }
+        queue.enqueueAction { released += "surface" }
+
+        first.destroy()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, idleReleases.size)
+        second.destroy()
+        assertEquals("the disposal pass must finish first", 0, idleReleases.size)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("one backend-idle release for the whole batch", 1, idleReleases.size)
+        assertEquals(emptyList<String>(), released)
+        idleReleases.removeAt(0).invoke()
+        assertEquals(listOf("texture", "stream", "surface"), released)
+        assertEquals(0, queue.size)
+
+        // A node disposed after the renderer also gets released without another screen or frame.
+        queue.enqueueAction { released += "late texture" }
+        shadowOf(Looper.getMainLooper()).idle()
+        idleReleases.removeAt(0).invoke()
+        assertEquals(4, released.size)
+    }
+
+    @Test
+    fun newSceneArrivingDuringIdleCleanupKeepsItsFullFrameGracePeriod() {
+        val idleReleases = mutableListOf<() -> Unit>()
+        queue.enableIdleCleanup { idleReleases += it }
+        var released = 0
+        queue.enqueueAction { released++ }
+        shadowOf(Looper.getMainLooper()).idle()
+        val next = renderer()
+        idleReleases.removeAt(0).invoke()
+        assertEquals(0, released)
+        repeat(EngineDestroyQueue.GRACE_FRAMES - 1) { next.renderFrame(0L) {} }
+        assertEquals(0, released)
+        next.renderFrame(0L) {}
+        assertEquals(1, released)
+        next.destroy()
+    }
+
+    @Test
+    fun idleCleanupDoesNotRetireTheQueueUsedByTheNextScene() {
+        val idleReleases = mutableListOf<() -> Unit>()
+        queue.enableIdleCleanup { idleReleases += it }
+        var released = 0
+        queue.enqueueAction { released++ }
+        shadowOf(Looper.getMainLooper()).idle()
+        idleReleases.removeAt(0).invoke()
+
+        val next = renderer()
+        queue.enqueueAction { released++ }
+        assertEquals("later enqueues must still be deferred", 1, released)
+        repeat(EngineDestroyQueue.GRACE_FRAMES) { next.renderFrame(0L) {} }
+        assertEquals(2, released)
+        next.destroy()
+    }
+
+    @Test
+    fun ownedEngineKeepsResourcesQueuedUntilFramesOrEngineTeardown() {
+        val scene = renderer()
+        var released = 0
+        queue.enqueueAction { released++ }
+        scene.destroy()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, released)
+        assertEquals(1, queue.size)
+        queue.drainAll()
+        assertEquals(1, released)
     }
 
     private fun renderer(): SceneRenderer {
