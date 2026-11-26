@@ -5,6 +5,8 @@ import simd
 #if os(iOS) || os(macOS) || os(visionOS)
 import RealityKit
 import ImageIO
+import Dispatch
+import os
 #endif
 
 /// The in-house glTF 2.0 importer: containers, accessors, hierarchy, materials,
@@ -89,6 +91,24 @@ final class GLTFTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testLocalGLBBufferViewKeepsItsBytesAfterTheFileIsOverwritten() throws {
+        var builder = GLTFBuilder.triangle()
+        let payload = Data(repeating: 0x42, count: 3 * 1024 * 1024)
+        let view = builder.view(payload)
+        let glb = builder.glb()
+        let url = try write(glb, as: "mutable.glb")
+        let document = try GLTFDocument.read(contentsOf: url)
+
+        // Overwrite in place without shortening the file, so a mapped read would
+        // observe the modified byte without risking a SIGBUS in the test process.
+        let file = try FileHandle(forWritingTo: url)
+        defer { try? file.close() }
+        try file.seek(toOffset: UInt64(glb.count - payload.count))
+        try file.write(contentsOf: Data([0]))
+
+        XCTAssertEqual(try document.bufferViewData(view).first, 0x42)
     }
 
     func testGLBDecodesFromASliceWithANonzeroStartIndex() throws {
@@ -418,6 +438,94 @@ final class GLTFTests: XCTestCase {
         } catch is CancellationError {
             // Expected.
         }
+    }
+
+    func testCancellingAnInFlightDecodeStopsTheImageWorker() async throws {
+        let url = try write(GLTFBuilder.texturedQuad().glb(), as: "quad.glb")
+        let reachedImageDecode = expectation(description: "image worker is about to read the PNG")
+        let resumeImageWorker = DispatchSemaphore(value: 0)
+        let probe = OSAllocatedUnfairLock(initialState: (
+            checks: 0, imageWorkerSawCancellation: false, decodeTaskWasCancelled: false
+        ))
+
+        let task = Task {
+            try await GLTFLoader.decodeScene(contentsOf: url) { document, isImageDecodeCancelled in
+                defer {
+                    let cancelled = Task.isCancelled
+                    probe.withLock { $0.decodeTaskWasCancelled = cancelled }
+                }
+                return try GLTFScene.decode(document, isImageDecodeCancelled: {
+                    let isFirstCheck = probe.withLock { state in
+                        state.checks += 1
+                        return state.checks == 1
+                    }
+                    if isFirstCheck {
+                        reachedImageDecode.fulfill()
+                        _ = resumeImageWorker.wait(timeout: .now() + 10)
+                    }
+                    let cancelled = isImageDecodeCancelled()
+                    if isFirstCheck {
+                        probe.withLock { $0.imageWorkerSawCancellation = cancelled }
+                    }
+                    return cancelled
+                })
+            }
+        }
+
+        await fulfillment(of: [reachedImageDecode], timeout: 5)
+        task.cancel()
+        resumeImageWorker.signal()
+        do {
+            _ = try await task.value
+            XCTFail("a cancelled decode must not return a scene")
+        } catch is CancellationError {
+            // Expected.
+        }
+
+        let state = probe.withLock { $0 }
+        XCTAssertTrue(state.decodeTaskWasCancelled)
+        XCTAssertTrue(state.imageWorkerSawCancellation)
+        XCTAssertEqual(state.checks, 2, "only the check before the PNG read and the check after the GCD loop run")
+    }
+
+    @MainActor
+    func testViewerDoesNotAttachAModelAfterItsLoadIsCancelled() async {
+        let root = SceneViewerContentRoot()
+        let entry = SceneViewerModelEntry(
+            key: "triangle", request: .asset("triangle.glb"), nodeName: nil, scale: nil,
+            position: nil, animationName: nil, autoPlayAllAnimations: false
+        )
+        let node = ModelNode(ModelEntity())
+
+        let task = Task {
+            await root.sync(to: [entry]) { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return node
+            }
+        }
+        await task.value
+
+        XCTAssertTrue(root.entity.children.isEmpty)
+        await root.sync(to: [entry]) { _ in node }
+        XCTAssertTrue(node.entity.parent === root.entity)
+    }
+
+    @MainActor
+    func testViewerStopsLoadingEntriesAfterACancelledDownload() async {
+        let root = SceneViewerContentRoot()
+        let entries = (0..<2).map { index in
+            SceneViewerModelEntry(
+                key: "model-\(index)", request: .url(URL(string: "https://example.invalid/\(index).glb")!),
+                nodeName: nil, scale: nil, position: nil, animationName: nil, autoPlayAllAnimations: false
+            )
+        }
+        var attempts = 0
+        await root.sync(to: entries) { _ in
+            attempts += 1
+            throw URLError(.cancelled)
+        }
+
+        XCTAssertEqual(attempts, 1)
     }
 
     @MainActor

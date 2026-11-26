@@ -319,6 +319,7 @@ extension GLTFScene {
                 let positions = try reader.vec3(positionAccessor)
                 guard !positions.isEmpty else { continue }
 
+                try Task.checkCancellation()
                 var raw: [UInt32]
                 if let indices = p.indices {
                     raw = try reader.indices(indices)
@@ -330,12 +331,15 @@ extension GLTFScene {
                         reason: "mesh \(meshIndex) primitive \(primitiveIndex): index \(bad) ≥ \(positions.count) vertices"
                     )
                 }
+                try Task.checkCancellation()
                 let indices = triangleList(raw, mode: mode)
                 guard indices.count >= 3 else { continue }
 
                 func attribute<T>(_ name: String, _ read: (Int) throws -> [T]) throws -> [T]? {
                     guard let accessor = p.attributes[name] else { return nil }
+                    try Task.checkCancellation()
                     let values = try read(accessor)
+                    try Task.checkCancellation()
                     return values.count == positions.count ? values : nil
                 }
                 var primitive = GLTFPrimitive(positions: positions, indices: indices, material: p.material)
@@ -349,6 +353,7 @@ extension GLTFScene {
                         return SIMD2(t.x, 1 - t.y)   // glTF: top-left origin; RealityKit: bottom-left
                     }
                 }
+                try Task.checkCancellation()
                 try readSkinning(p, reader: reader, vertexCount: positions.count, into: &primitive)
                 primitives.append(primitive)
             }
@@ -524,7 +529,9 @@ extension GLTFScene {
         var sets: [([Float], [Float])] = []
         var set = 0
         while let jointsAccessor = p.attributes["JOINTS_\(set)"], let weightsAccessor = p.attributes["WEIGHTS_\(set)"] {
+            try Task.checkCancellation()
             let joints = try reader.floats(jointsAccessor)
+            try Task.checkCancellation()
             let weights = try reader.floats(weightsAccessor)
             guard joints.components == 4, weights.components == 4,
                   joints.values.count == vertexCount * 4, weights.values.count == vertexCount * 4 else {
@@ -534,10 +541,12 @@ extension GLTFScene {
             set += 1
         }
         guard !sets.isEmpty else { return }
+        try Task.checkCancellation()
         let perVertex = sets.count * 4
         var joints = [UInt16](repeating: 0, count: vertexCount * perVertex)
         var weights = [Float](repeating: 0, count: vertexCount * perVertex)
         for vertex in 0..<vertexCount {
+            if vertex.isMultiple(of: 1024) { try Task.checkCancellation() }
             var sum: Float = 0
             for (s, (j, w)) in sets.enumerated() {
                 for k in 0..<4 {

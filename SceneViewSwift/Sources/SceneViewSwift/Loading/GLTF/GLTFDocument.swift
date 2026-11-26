@@ -39,7 +39,9 @@ struct GLTFDocument {
         try Task.checkCancellation()
         let data: Data
         do {
-            data = try Data(contentsOf: url, options: .mappedIfSafe)
+            // GLB slices outlive this read. Own their bytes so a later truncation
+            // of the file cannot invalidate the shared storage.
+            data = try Data(contentsOf: url)
         } catch {
             try Task.checkCancellation()
             throw ModelLoadingError.unreadableFile(url)

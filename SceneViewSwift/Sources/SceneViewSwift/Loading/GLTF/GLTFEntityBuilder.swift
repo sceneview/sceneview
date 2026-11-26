@@ -29,21 +29,27 @@ import AppKit
 enum GLTFLoader {
 
     /// Parses and decodes a glTF file on a background task.
-    static func decodeScene(contentsOf url: URL) async throws -> GLTFScene {
-        try Task.checkCancellation()
-        // GCD image workers run outside the detached Swift task's cancellation context.
-        let imageDecodeCancelled = OSAllocatedUnfairLock(initialState: false)
-        let worker = Task.detached(priority: .userInitiated) {
-            let document = try GLTFDocument.read(contentsOf: url)
-            return try GLTFScene.decode(document, isImageDecodeCancelled: {
-                imageDecodeCancelled.withLock { $0 }
-            })
+    static func decodeScene(
+        contentsOf url: URL,
+        decode: @escaping @Sendable (GLTFDocument, @Sendable () -> Bool) throws -> GLTFScene = { document, isCancelled in
+            try GLTFScene.decode(document, isImageDecodeCancelled: isCancelled)
         }
+    ) async throws -> GLTFScene {
+        try Task.checkCancellation()
+        // The child task inherits cancellation. GCD image workers need a separate signal.
+        let imageDecodeCancelled = OSAllocatedUnfairLock(initialState: false)
         let result = await withTaskCancellationHandler {
-            await worker.result
+            await withTaskGroup(of: Result<GLTFScene, Error>.self) { group in
+                group.addTask(priority: .userInitiated) {
+                    Result {
+                        let document = try GLTFDocument.read(contentsOf: url)
+                        return try decode(document, { imageDecodeCancelled.withLock { $0 } })
+                    }
+                }
+                return await group.next() ?? .failure(CancellationError())
+            }
         } onCancel: {
             imageDecodeCancelled.withLock { $0 = true }
-            worker.cancel()
         }
         try Task.checkCancellation()
         return try result.get()
@@ -120,7 +126,7 @@ final class GLTFEntityBuilder {
         try Task.checkCancellation()
         guard drawableCount > 0 else { throw ModelLoadingError.emptyMesh }
 
-        try buildAnimations(storeIn: root)
+        try await buildAnimations(storeIn: root)
         return root
     }
 
@@ -503,7 +509,7 @@ final class GLTFEntityBuilder {
     /// Every animated node gets a `Transform` track bound to its entity (so anything
     /// parented to a joint follows it), and every skinned mesh whose skeleton the
     /// animation reaches gets a `JointTransforms` track computed from the posed scene.
-    private func buildAnimations(storeIn root: ModelEntity) throws {
+    private func buildAnimations(storeIn root: ModelEntity) async throws {
         for animation in scene.animations {
             try Task.checkCancellation()
             let animated = scene.animatedNodes(animation).filter { entities[$0] != nil }
@@ -529,6 +535,10 @@ final class GLTFEntityBuilder {
             var skinFrames: [Int: [JointTransforms]] = [:]
 
             for k in 0..<frameCount {
+                if k.isMultiple(of: 16) {
+                    await Task.yield()
+                    try Task.checkCancellation()
+                }
                 let t = Float(k) * interval
                 let locals = scene.localTransforms(animation: animation, at: t)
                 for node in sortedAnimated {
@@ -544,6 +554,7 @@ final class GLTFEntityBuilder {
                 }
             }
 
+            try Task.checkCancellation()
             var tracks: [any AnimationDefinition] = []
             for node in sortedAnimated {
                 guard let frames = nodeFrames[node], let path = bindPath(to: node) else { continue }
@@ -562,6 +573,7 @@ final class GLTFEntityBuilder {
                 ))
             }
             guard !tracks.isEmpty else { continue }
+            try Task.checkCancellation()
             let resource = try AnimationResource.generate(with: AnimationGroup(group: tracks, name: animation.name))
             resource.store(in: root)
         }
