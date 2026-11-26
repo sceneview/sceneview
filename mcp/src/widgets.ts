@@ -317,6 +317,13 @@ function buildWidgetHtml(space: boolean): string {
       min-height: 0;
       background: var(--sv-stage);
     }
+    #preview {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
     #canvas {
       display: block;
       width: 100%;
@@ -377,7 +384,7 @@ function buildWidgetHtml(space: boolean): string {
       justify-content: center;
       pointer-events: none;
     }
-    #ar-card { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+    #ar-card { pointer-events: auto; display: flex; align-items: center; gap: 12px; width: 100%; }
     #ar-open {
       display: inline-flex;
       align-items: center;
@@ -394,6 +401,7 @@ function buildWidgetHtml(space: boolean): string {
       line-height: 1.2;
       text-decoration: none;
       text-align: center;
+      width: 100%;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease;
     }
@@ -402,19 +410,27 @@ function buildWidgetHtml(space: boolean): string {
     #ar-open:focus-visible { outline: 2px solid var(--sv-link); outline-offset: 3px; }
     #ar-open svg { flex: 0 0 auto; }
     #ar .long, #ar-qr, #ar-scan { display: none; }
-    #ar.wide .long { display: inline; }
-    #ar.wide.has-qr { justify-content: center; }
-    #ar.wide.has-qr #ar-card {
+    #ar.wide:not(.has-qr) .long { display: inline; }
+    #ar.wide {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
       padding: 0;
+      background: transparent;
+    }
+    #ar.wide #ar-card {
+      width: auto;
+      max-width: 280px;
+      padding: 10px;
       border-radius: 12px;
       background: var(--sv-surface);
       color: var(--sv-on-surface);
-      box-shadow: none;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
     }
     #ar.wide.has-qr #ar-qr {
       display: block;
-      width: ${space ? 160 : 128}px;
-      height: ${space ? 160 : 128}px;
+      width: 96px;
+      height: 96px;
       flex: 0 0 auto;
       padding: 6px;
       border-radius: 8px;
@@ -422,10 +438,10 @@ function buildWidgetHtml(space: boolean): string {
     }
     #ar-qr svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }
     #ar.wide.has-qr #ar-scan { display: flex; flex-direction: column; gap: 4px; }
-    #ar-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-    #ar-scan strong { font-size: 0.875rem; font-weight: 600; }
+    #ar-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; }
+    #ar-scan strong { font-size: 0.8rem; font-weight: 600; }
     #ar-scan span { font-size: 0.75rem; color: var(--sv-on-surface-dim); }
-    #ar.wide.has-qr #ar-open { min-height: 44px; box-shadow: none; }
+    #ar.wide #ar-open { min-height: 44px; padding: 8px 12px; font-size: 0.8rem; box-shadow: none; }
     @media (prefers-reduced-motion: reduce) {
       #loader svg { animation: none; opacity: 0.6; }
       #canvas, #ar-open { transition: none; }
@@ -438,6 +454,7 @@ function buildWidgetHtml(space: boolean): string {
       <div id="heading"><strong id="title">${space ? "See it at real size" : "SceneView 3D Viewer"}</strong><span id="real-size" hidden></span></div>
       <span id="brand">Powered by <a href="https://sceneview.github.io" target="_blank" rel="noopener">SceneView</a></span>
     </div>
+    <div id="preview">
     <div id="canvas-wrap">
       <canvas id="canvas" style="opacity:0" role="img" tabindex="0" aria-label="3D model"></canvas>
       <div id="loader" role="status" aria-live="polite">
@@ -470,11 +487,12 @@ function buildWidgetHtml(space: boolean): string {
                 <path d="m12 7 4.5 2.5v5L12 17l-4.5-2.5v-5L12 7Z"/>
                 <path d="m7.5 9.5 4.5 2.5 4.5-2.5M12 12v5"/>
               </svg>
-              <span>${space ? "See it at real size in your room" : 'Open in AR<span class="long"> on your phone</span>'}</span>
+              <span>Open in AR<span class="long"> on your phone</span></span>
             </a>
           </div>
         </div>
       </div>
+    </div>
     <div id="footer">
       <span class="pill" id="format">${space ? "cm" : "GLB"}</span>
       <span class="pill" id="engine">${space ? "Size preview" : "3D preview"}</span>
@@ -960,11 +978,22 @@ function buildWidgetHtml(space: boolean): string {
 
       function framePreview() {
         if (!viewer || interacted) return;
-        if (viewer.frameModel) viewer.frameModel({ fill: 0.8 });
+        if (viewer.frameModel) viewer.frameModel({ fill: rendererKind === "filament" ? 0.9 : 0.8 });
         if (viewer.getCameraOrbit && viewer.setCameraOrbit) {
           var orbit = viewer.getCameraOrbit();
+          // The swept box has empty corners above rounded models: a 90% height
+          // envelope puts the visible Astronaut at about 80%. Keep the swept width
+          // at 80% independently, including on portrait canvases and during orbit.
+          var radius = orbit.radius;
+          if (viewer._asset && viewer._assetBox) {
+            var box = viewer._assetBox(viewer._asset);
+            var sweep = Math.hypot(box.max[0] - box.min[0], box.max[2] - box.min[2]) / 2;
+            var aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+            var tangent = 0.8 * Math.tan((orbit.fov || 35) * Math.PI / 360) * aspect;
+            radius = Math.max(radius, sweep * Math.sqrt(1 + 1 / (tangent * tangent)));
+          }
           // Keep the renderer's front-facing three-quarter angle.
-          viewer.setCameraOrbit({ height: orbit.target[1] + orbit.radius * 0.12 });
+          viewer.setCameraOrbit({ radius: radius, height: orbit.target[1] + radius * 0.12 });
         }
       }
       var frameObserver = typeof ResizeObserver === "function" ? new ResizeObserver(function () {

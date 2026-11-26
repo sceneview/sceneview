@@ -11,6 +11,9 @@ export const SPACE_DRAWING_JS = `
         var ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("This host cannot draw the size preview. Use the phone link below.");
         var width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
+        // Keep dimensions and table legs left of the desktop AR card. The canvas
+        // retains its full height; on a phone the action is below the drawing.
+        var drawingWidth = width - (arEl.classList.contains("wide") ? 216 : 0);
         var ratio = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -19,22 +22,30 @@ export const SPACE_DRAWING_JS = `
         // sizeCm is always width, height, depth. Preserve proportions at every size.
         var w = data.sizeCm[0] / 100, h = data.sizeCm[1] / 100, d = data.sizeCm[2] / 100;
         var base = data.placement === "table" ? 0.75 : 0;
-        var humanX = -0.65, humanZ = d / 2;
+        // Move towards the viewer as we move left, so the person's feet share
+        // the box's front floor line (x + z = d), rather than receding behind it.
+        var humanX = -0.85, humanZ = d - humanX;
+        function humanPoint(x, y) { return [humanX + x / Math.SQRT2, y, humanZ - x / Math.SQRT2]; }
         function iso(x, y, z) { return [0.866 * (x - z), 0.4 * (x + z) - y]; }
-        var anchors = [];
-        [-1, w + 0.45].forEach(function (x) {
-          [-0.25, Math.max(base + h + 0.25, 2)].forEach(function (y) {
+        var anchors = [iso.apply(null, humanPoint(-0.35, 0)), iso.apply(null, humanPoint(0.35, 1.96))];
+        // Fit the actual objects and floor, not an empty cuboid above the whole
+        // floor: that cuboid made both the box and the person unnecessarily small.
+        [0, w + 0.45].forEach(function (x) {
+          [base - 0.25, base + h + 0.25].forEach(function (y) {
             [-0.3, d + 0.45].forEach(function (z) { anchors.push(iso(x, y, z)); });
           });
         });
+        var floor = [[humanX-0.3,0,-0.3],[w+0.4,0,-0.3],[w+0.4,0,d+0.4],
+          [0,0,d+0.4],[humanX-0.3,0,humanZ+0.3]];
+        floor.forEach(function (v) { anchors.push(iso.apply(null, v)); });
         var minX = Math.min.apply(null, anchors.map(function (p) { return p[0]; }));
         var maxX = Math.max.apply(null, anchors.map(function (p) { return p[0]; }));
         var minY = Math.min.apply(null, anchors.map(function (p) { return p[1]; }));
         var maxY = Math.max.apply(null, anchors.map(function (p) { return p[1]; }));
-        var scale = Math.min(Math.max(1, width - 56) / (maxX - minX), Math.max(1, height - 36) / (maxY - minY));
+        var scale = Math.min(Math.max(1, drawingWidth - 56) / (maxX - minX), Math.max(1, height - 36) / (maxY - minY));
         function point(x, y, z) {
           var p = iso(x, y, z);
-          return [width / 2 + (p[0] - (minX + maxX) / 2) * scale,
+          return [drawingWidth / 2 + (p[0] - (minX + maxX) / 2) * scale,
             height / 2 + (p[1] - (minY + maxY) / 2) * scale];
         }
         function path(vertices, fill, stroke, closed) {
@@ -68,11 +79,13 @@ export const SPACE_DRAWING_JS = `
         }
 
         // Ground plane and quiet grid, shared by the person and the reference table.
-        path([[-1,0,-0.3],[w+0.4,0,-0.3],[w+0.4,0,d+0.4],[-1,0,d+0.4]], "#151d2b", "#2c384d");
+        path(floor, "#151d2b", "#2c384d");
         for (var gx = 0; gx <= w; gx += Math.max(0.25, w / 12))
           path([[gx,0,-0.3],[gx,0,d+0.4]], null, "#202c3f", false);
         for (var gz = 0; gz <= d; gz += Math.max(0.25, d / 12))
-          path([[-1,0,gz],[w+0.4,0,gz]], null, "#202c3f", false);
+          path([[humanX-0.3,0,gz],[w+0.4,0,gz]], null, "#202c3f", false);
+        // A shared contact line makes the zero-height plane explicit.
+        path([humanPoint(-0.3,0),[0,0,d]], null, "#64748b", false);
         if (base) {
           [[-0.12,-0.12],[w+0.12,-0.12],[-0.12,d+0.12],[w+0.12,d+0.12]].forEach(function (v) {
             path([[v[0],0,v[1]],[v[0],base,v[1]]], null, "#64748b", false);
@@ -91,9 +104,9 @@ export const SPACE_DRAWING_JS = `
 
         // Flat human outline: feet at zero, crown at 1.75 metres.
         var body = [[-.16,1.47],[-.24,1.39],[-.32,.96],[-.24,.93],[-.14,1.23],[-.13,.85],[-.17,0],[-.06,0],[0,.75],[.06,0],[.17,0],[.13,.85],[.14,1.23],[.24,.93],[.32,.96],[.24,1.39],[.16,1.47]];
-        path(body.map(function (v) { return [humanX + v[0], v[1], humanZ]; }), "rgba(179,198,244,0.18)", "#8d9bb4");
+        path(body.map(function (v) { return humanPoint(v[0], v[1]); }), "rgba(179,198,244,0.18)", "#8d9bb4");
         var head = point(humanX,1.64,humanZ);
-        ctx.beginPath(); ctx.ellipse(head[0],head[1],0.0866*scale,0.11*scale,0,0,Math.PI*2);
+        ctx.beginPath(); ctx.ellipse(head[0],head[1],0.1*Math.SQRT2*0.866*scale,0.11*scale,0,0,Math.PI*2);
         ctx.fillStyle = "rgba(179,198,244,0.18)"; ctx.fill(); ctx.strokeStyle = "#8d9bb4"; ctx.stroke();
         label("1.75 m", point(humanX,1.96,humanZ), "#b3c6f4");
         dimension([0,base-.13,d+.2],[w,base-.13,d+.2], data.sizeCm[0] + " cm wide", 0, 12);

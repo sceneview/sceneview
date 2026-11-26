@@ -19,9 +19,9 @@ import {
   uiExtensionSettings,
   WIDGET_3D_VIEWER_HTML,
   WIDGET_3D_VIEWER_URI,
-  WIDGET_UI_META,
-  WIDGET_SHOW_IN_SPACE_URI,
   WIDGET_SHOW_IN_SPACE_HTML,
+  WIDGET_SHOW_IN_SPACE_URI,
+  WIDGET_UI_META,
 } from "./widgets.js";
 
 describe("widget resource registry", () => {
@@ -143,6 +143,38 @@ describe("3D viewer widget HTML", () => {
 });
 
 describe("Open in AR action", () => {
+  it.each([WIDGET_3D_VIEWER_HTML, WIDGET_SHOW_IN_SPACE_HTML])(
+    "keeps a compact desktop overlay and a full-width phone action",
+    (html) => {
+      const rule = (selector: string) => html.split(`${selector} {`)[1]?.split("}")[0];
+      expect(rule("#ar.wide")).toMatch(/position:\s*absolute/);
+      expect(rule("#ar.wide")).toMatch(/bottom:\s*12px/);
+      expect(rule("#ar.wide")).toMatch(/right:\s*12px/);
+      expect(rule("#ar.wide.has-qr #ar-qr")).toMatch(/width:\s*96px/);
+      expect(rule("#ar.wide.has-qr #ar-qr")).toMatch(/height:\s*96px/);
+      expect(rule("#ar .long, #ar-qr, #ar-scan")).toMatch(/display:\s*none/);
+      for (const selector of ["#ar-card", "#ar-copy", "#ar-open"]) {
+        expect(rule(selector)).toMatch(/width:\s*100%/);
+      }
+      expect(rule("#ar.wide #ar-card")).toContain("var(--sv-surface)");
+      expect(html).toContain('<span>Open in AR<span class="long"> on your phone</span></span>');
+      // The card overlays the preview on desktop, outside the canvas flex child,
+      // so it can return to document flow below the canvas on a phone.
+      const stack: (string | undefined)[] = [];
+      const parents: Record<string, string | undefined> = {};
+      for (const match of html.split("<script>")[0].matchAll(/<\/?div\b[^>]*>/g)) {
+        if (match[0].startsWith("</")) stack.pop();
+        else {
+          const id = match[0].match(/id="([^"]+)"/)?.[1];
+          if (id) parents[id] = stack.at(-1);
+          stack.push(id);
+        }
+      }
+      expect(parents["canvas-wrap"]).toBe("preview");
+      expect(parents.ar).toBe("preview");
+      expect(parents.footer).toBe("stage");
+    }
+  );
   // The exact function the widget runs, evaluated from the same source string.
   const openInArUrl = new Function(`${OPEN_IN_AR_JS}; return openInArUrl;`)() as (
     modelUrl: unknown,
@@ -392,7 +424,7 @@ describe("show_in_space widget resource", () => {
     expect(read?.text).toContain("data.sizeCm[1] / 100");
     expect(read?.text).toContain("data.sizeCm[2] / 100");
     expect(read?.text).toContain("estimated size");
-    expect(read?.text).toContain("See it at real size in your room");
+    expect(read?.text).toContain("Open in AR");
   });
   it("binds both metadata conventions and returns the dimension provenance", async () => {
     const def = TOOL_DEFINITIONS.find((t) => t.name === "show_in_space");

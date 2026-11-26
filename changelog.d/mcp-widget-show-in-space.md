@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **MCP widgets:** `show_in_space` now renders an MCP Apps widget, a dimensioned box at the given size beside a 1.75 m human reference, with the existing phone link and a QR on desktop; text results are unchanged. The `view_3d_model` viewer gains a loading state, a contact shadow and a real-size readout, sends its host handshake before downloading renderers, and loads a WASM-free three.js fallback from sceneview.github.io only when Filament cannot start.
