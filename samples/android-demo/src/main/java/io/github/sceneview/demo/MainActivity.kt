@@ -279,6 +279,8 @@ class MainActivity : ComponentActivity() {
         // Replace the activity intent so subsequent re-creations see the new
         // deep link, not the original launcher intent.
         setIntent(intent)
+        // `--es push_qa` reaches a debug activity already on top here (singleTop), not onCreate.
+        if (BuildConfig.DEBUG) intent.getStringExtra("push_qa")?.let { DemoPushNotifier.postQa(this, sample = it) }
         // The demo on screen may take it in place (Ask in AR's next question): no navigation
         // and no reset below, so its AR session and any replay keep running.
         if (DemoSettings.inPlaceIntentHandler?.invoke(intent) == true) return

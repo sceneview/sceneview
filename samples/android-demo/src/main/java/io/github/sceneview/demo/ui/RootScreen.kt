@@ -249,9 +249,11 @@ fun RootScreen(
     // moment of value once the user is back here — never on the AR View tab, never over a
     // live AR session or another sheet. The short wait lets the screen settle first, so the
     // sheet does not ride in on the back transition from the sample.
-    // Nor in the session the team card showed: one ask per session (telemetry/SessionAsks.kt).
+    // Nor in a session where the team card or the notification pre-prompt already asked: one ask
+    // per session (telemetry/SessionAsks.kt).
     val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive &&
-        !whatsNewSinceSheet.isShown && supportEntry == null && !SessionAsks.teamCardShown
+        !whatsNewSinceSheet.isShown && supportEntry == null && !SessionAsks.teamCardShown &&
+        !SessionAsks.pushPromptShown
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
         delay(SUPPORT_PROMPT_SETTLE_MILLIS)
