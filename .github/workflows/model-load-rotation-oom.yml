@@ -1,0 +1,132 @@
+name: Model load OOM on rotation (Android 8+ emulators)
+
+# Proof for #5271 on real x86_64 emulators with a small ART heap (dalvik.vm.heapgrowthlimit),
+# which arm64 hosts cannot run for API 26-28. Not a required check: it only runs
+# when its own files change, or by hand.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/model-load-rotation-oom.yml
+      - tools/model-load-rotation-oom/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-load-rotation-oom-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Third-party asset from the public MAVLab report (Labs-Ascend/MAVLab). Fetched at run time, never committed.
+  DRONE_URL: https://raw.githubusercontent.com/Labs-Ascend/MAVLab/843fefe3fe58345609282ec4c548c811a44ac659/mavlab-android/app/src/main/assets/models/drone.glb
+  DRONE_BYTES: "5794580"
+
+jobs:
+  build:
+    name: Build repro APKs (4.73.0, this branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-gradle
+
+      # The root build signs every publication, mavenLocal included. A throwaway key made
+      # here, used once and never stored, lets that signing run without any repository secret.
+      - name: Make a throwaway signing key
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"; mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-gen-key "CI throwaway <ci@invalid>" rsa2048 sign 1d
+          {
+            echo "ORG_GRADLE_PROJECT_signingInMemoryKey<<KEY_EOF"
+            gpg --batch --armor --export-secret-keys
+            echo "KEY_EOF"
+          } >> "$GITHUB_ENV"
+
+      # `branch` is this checkout's sceneview; its sceneview-core is the release it is based on.
+      - name: Publish this branch's sceneview to mavenLocal as <VERSION_NAME>-branch
+        run: |
+          base=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          echo "BASE_VERSION=$base" >> "$GITHUB_ENV"
+          ./gradlew :sceneview:publishToMavenLocal -PVERSION_NAME=$base-branch -PsigningInMemoryKeyPassword= --no-configuration-cache --stacktrace
+
+      - name: Fetch drone.glb
+        working-directory: tools/model-load-rotation-oom
+        run: |
+          mkdir -p app/src/main/assets/models
+          curl -fsSL -o app/src/main/assets/models/drone.glb "$DRONE_URL"
+          size=$(stat -c %s app/src/main/assets/models/drone.glb)
+          echo "drone.glb: $size bytes"
+          test "$size" = "$DRONE_BYTES"
+
+      - name: Assemble one APK per version
+        working-directory: tools/model-load-rotation-oom
+        run: |
+          mkdir -p apks
+          # 4.73.0 is the release the MAVLab retest crashed on (25/11).
+          ./gradlew :app:assembleDebug -Psv=4.73.0 --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk apks/mavlab-repro-4.73.0.apk
+          ./gradlew :app:assembleDebug -Psv=$BASE_VERSION-branch -Pcore=$BASE_VERSION --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk apks/mavlab-repro-branch.apk
+          ls -l apks
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: repro-apks
+          path: tools/model-load-rotation-oom/apks/
+          retention-days: 7
+
+  emulator:
+    name: API ${{ matrix.api }}, heap ${{ matrix.heap }} MiB, extra ${{ matrix.extra }} MiB
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        # The MAVLab retest of 4.73.0 rotated 7-12 s after the first engine, with an app that sits
+        # higher in its heap than this repro: the delays and the extra ballast stand in for both.
+        include:
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 0 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 3 }
+          - { api: 26, heap: 16, versions: "4.73.0 branch", delays: "0 4 8", extra: 5 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/model-load-rotation-oom
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: repro-apks
+          path: apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Trials on the emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target || 'google_apis' }}
+          arch: x86_64
+          # swiftshader_indirect crashes the emulator (no output, a crashpad dump) about 15 s after
+          # Filament starts rendering; swangle_indirect and guest do not.
+          # No heap-size here: it writes hw.heapSize, which the emulator ignores. ci-trials.sh sets the limit.
+          emulator-options: -no-window -gpu ${{ matrix.gpu || 'swangle_indirect' }} -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          # Each line runs in its own `sh -c`: keep every command on one line.
+          script: |
+            timeout 150 adb wait-for-device
+            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 90 ]; do sleep 2; attempts=$((attempts + 1)); done
+            DELAYS="${{ matrix.delays }}" EXTRA_MIB=${{ matrix.extra }} bash tools/model-load-rotation-oom/ci-trials.sh apks "${{ matrix.versions }}" ${{ matrix.api }} ${{ matrix.heap }} 2 results
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: oom-api${{ matrix.api }}-heap${{ matrix.heap }}-extra${{ matrix.extra }}
+          path: results/
+          retention-days: 14
+          if-no-files-found: ignore
