@@ -52,15 +52,15 @@ and crash reports, the OS permission or the demo itself for the rest).
 | Location > Precise location | Optional | App functionality | ARCore Geospatial, after the location permission: the Geospatial anchors demo (`ARGeospatialAnchorsDemo`, `GeospatialMode.ENABLED`) and Streetscape (`ARSceneGeometryDemo`, `StreetscapeGeometryMode.ENABLED`) |
 | Personal info > User IDs | Optional | Analytics | ARCore's own user ID while AR runs (the app has no accounts) |
 | Photos and videos > Videos | Optional | App functionality | Camera data ARCore sends to host and resolve Cloud Anchors (`hostCloudAnchorAsync`, `resolveCloudAnchorAsync` in `ARCloudAnchorDemo`) and for Geospatial and Streetscape localization. Not ephemeral: resolving is processed in memory only, but hosting and Geospatial data are stored for a while before Google deletes them |
-| Financial info > Purchase history | Optional | Analytics | The Firebase Analytics events of the in-app support purchases, with their product ID or tier (`AnalyticsEvent`, `SupportPromptAnalytics`). Declared because 4.75.0 sends them; removing them from Analytics is planned, and this row goes once a release without them is live |
+| Financial info > Purchase history | Optional | Analytics | The Firebase Analytics events of the in-app support purchases, with their product ID or tier (`AnalyticsEvent`, `SupportPromptAnalytics`). Declared because 4.75.0 sends them; #5300 removes them from Analytics, and this row goes once a release with #5300 is live |
 | App activity > App interactions | Optional | Analytics, App functionality | Firebase Analytics events; ARCore's API usage and app activity, which Google uses for analytics and to keep AR working |
 | App activity > In-app search history | Optional | Analytics | The `search` event's `search_term`: lowercased, cut to 50 characters, emails, links and long or phone-like numbers redacted on the device |
 | App info and performance > Crash logs | Optional | Analytics, App functionality | Crashlytics |
 | App info and performance > Diagnostics | Optional | Analytics, App functionality | Crashlytics; ARCore; ML Kit object detection and the ML Kit GenAI Prompt API (Gemini Nano), whose own diagnostics go to Google whatever the app's analytics switch says ([ML Kit disclosure](https://developers.google.com/ml-kit/android-data-disclosure)) |
 | Device or other IDs | Required | App functionality, Analytics, Developer communications | Firebase app instance ID, installation ID, FCM token; ARCore's and ML Kit's per-installation identifiers |
 
-**Not collected:** name, email, phone, address, other personal info, financial info,
-health, messages, photos, audio, files, calendar, contacts, web browsing, installed apps,
+**Not collected:** name, email, phone, address, other personal info, financial info other than
+the purchase history above (no card or payment details), health, messages, photos, audio, files, calendar, contacts, web browsing, installed apps,
 other user-generated content. **No advertising ID**: the merged manifest
 must not carry `com.google.android.gms.permission.AD_ID` (firebase-analytics adds it;
 remove it with `tools:node="remove"`) and must set
