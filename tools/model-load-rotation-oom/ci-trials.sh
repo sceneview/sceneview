@@ -11,7 +11,12 @@ mkdir -p "$OUT"
 step() { echo "[$(date -u +%H:%M:%S)] $*"; }
 prop() { timeout 20 adb shell getprop "$1" | tr -d '\r'; }
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && cat "$OUT/results.md" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/results.md"; }
-diag() { step "diagnostics: $*"; timeout 10 adb devices -l; pgrep -af qemu-system | cut -c1-160 || echo "no emulator process"; }
+diag() {
+  step "diagnostics: $*"; timeout 10 adb devices -l
+  pgrep -af qemu-system >/dev/null && pgrep -af qemu-system | cut -c1-160 || echo "no emulator process"
+  free -m; sudo -n dmesg 2>/dev/null | grep -iE 'oom|killed process|qemu|segfault|trap' | tail -10
+  ls -t /tmp/android-*/emu-crash-*.db 2>/dev/null | head -3; ls -t "$HOME"/.android/emu-crash* 2>/dev/null | head -3
+}
 
 # The emulator runner's heap-size input writes hw.heapSize, which the emulator ignores (the
 # images boot with dalvik.vm.heapsize=512m and no growth limit). Set the per-app limit
