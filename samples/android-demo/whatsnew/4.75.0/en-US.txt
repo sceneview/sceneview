@@ -1,4 +1,4 @@
-- New: Ask in AR (beta). Ask a question out loud and the answer is drawn on your wall in handwriting, measured on the real room.
+- New: Ask in AR (beta). Ask a question out loud and the answer is drawn in your room in handwriting, measured on the real room.
 - "Where should I hang this picture?" A level line, two nails, then the frame on the wall.
 - "Will a 2 m sofa fit here?" Its footprint on the floor, then the sofa itself, to scale.
 - "How do I bleed this radiator?" A circle round the screw, the key turning a quarter turn, and the steps.
