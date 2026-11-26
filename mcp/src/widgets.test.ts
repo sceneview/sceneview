@@ -20,6 +20,8 @@ import {
   WIDGET_3D_VIEWER_HTML,
   WIDGET_3D_VIEWER_URI,
   WIDGET_UI_META,
+  WIDGET_SHOW_IN_SPACE_URI,
+  WIDGET_SHOW_IN_SPACE_HTML,
 } from "./widgets.js";
 
 describe("widget resource registry", () => {
@@ -370,5 +372,46 @@ describe("MCP Apps extension negotiation (#3192)", () => {
     expect(serveWidgetsTo({ mimeTypes: ["text/uri-list"] })).toBe(false);
     // `text/html+skybridge` is the WITHDRAWN OpenAI spelling, not ours (#3189).
     expect(serveWidgetsTo({ mimeTypes: ["text/html+skybridge"] })).toBe(false);
+  });
+});
+
+describe("show_in_space widget resource", () => {
+  it("lists and reads the resource with the same CSP as the viewer", () => {
+    const resource = listWidgetResources().find((r) => r.uri === WIDGET_SHOW_IN_SPACE_URI);
+    expect(resource).toMatchObject({
+      uri: "ui://widget/show-in-space.html",
+      mimeType: MCP_APP_MIME_TYPE,
+      _meta: { ui: WIDGET_UI_META },
+    });
+    const read = readWidgetResource(WIDGET_SHOW_IN_SPACE_URI);
+    expect(read?.text).toBe(WIDGET_SHOW_IN_SPACE_HTML);
+    expect(read?._meta).toEqual(readWidgetResource(WIDGET_3D_VIEWER_URI)?._meta);
+    expect(Buffer.byteLength(read?.text || "")).toBeLessThan(60_000);
+    expect(read?.text).toContain('canvas.getContext("2d")');
+    expect(read?.text).toContain("data.sizeCm[0] / 100");
+    expect(read?.text).toContain("data.sizeCm[1] / 100");
+    expect(read?.text).toContain("data.sizeCm[2] / 100");
+    expect(read?.text).toContain("estimated size");
+    expect(read?.text).toContain("See it at real size in your room");
+  });
+  it("binds both metadata conventions and returns the dimension provenance", async () => {
+    const def = TOOL_DEFINITIONS.find((t) => t.name === "show_in_space");
+    expect(def?._meta).toMatchObject({
+      ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI },
+      "openai/outputTemplate": WIDGET_SHOW_IN_SPACE_URI,
+    });
+    const result = await dispatchTool("show_in_space", {
+      widthCm: 80,
+      heightCm: 75,
+      depthCm: 40,
+      label: "Desk",
+      dimensionSource: "estimated",
+    });
+    expect(result._meta).toEqual({ ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI } });
+    expect(result.structuredContent).toMatchObject({
+      sizeCm: [80, 75, 40],
+      dimensionSource: "estimated",
+    });
+    expect(def?.outputSchema?.required).toContain("dimensionSource");
   });
 });

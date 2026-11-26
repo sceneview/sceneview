@@ -21,7 +21,7 @@
  *
  * The renderer is **SceneView.js + Filament.js**, the same WebGL2/WASM stack
  * that powers `sceneview-web` and the sceneview.github.io playground. A
- * WASM-free glTF renderer is bundled as a compatibility path for stricter hosts.
+ * WASM-free glTF renderer is loaded lazily as a compatibility path for stricter hosts.
  * Filament remains the primary renderer wherever the host permits it.
  *
  * This file used to live in the hosted gateway (`mcp-gateway/src/mcp/widgets.ts`,
@@ -30,7 +30,7 @@
  */
 
 import { LATEST_SCENEVIEW_RELEASE, PACKAGE_VERSION } from "./generated/version.js";
-import { WIDGET_FALLBACK_JS } from "./vendor/widget-fallback.js";
+import { SPACE_DRAWING_JS } from "./widget-space.js";
 
 /** Canonical MCP Apps mime type for widget resources. */
 export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -111,6 +111,7 @@ export function serveWidgetsTo(settings: UiExtensionSettings | null | undefined)
 
 /** Resource URI of the 3D viewer widget (`ui://widget/<name>.html` convention). */
 export const WIDGET_3D_VIEWER_URI = "ui://widget/3d-viewer.html";
+export const WIDGET_SHOW_IN_SPACE_URI = "ui://widget/show-in-space.html";
 
 /**
  * MCP Apps `_meta.ui` block attached to the widget resource. `csp` is what the
@@ -173,6 +174,7 @@ const NEUTRAL_IBL_URL = `${CDN_BASE}/environments/neutral_ibl.ktx`;
  * desktop-sized viewport only: a phone never downloads it. The QR is drawn in the browser —
  * no QR image service ever sees the link.
  */
+const FALLBACK_JS_URL = `${CDN_BASE}/js/widget-fallback.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 const QRCODE_JS_URL = `${CDN_BASE}/js/qrcode-vendor.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 
 /**
@@ -213,19 +215,20 @@ export const OPEN_IN_AR_JS = `function openInArUrl(modelUrl, source) {
  * With no `modelUrl` from any source the widget shows a placeholder with the
  * SceneView mark, so it never renders as an empty box.
  */
-export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
+function buildWidgetHtml(space: boolean): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SceneView 3D Viewer</title>
+  <title>${space ? "SceneView · Real size" : "SceneView 3D Viewer"}</title>
   <style>
     /* Colour tokens from DESIGN.md, light first. The host picks the theme
        (MCP Apps \`hostContext.theme\`, ChatGPT \`window.openai.theme\`) and
        the script mirrors it onto <html data-theme>; without one the OS
        preference applies. The 3D stage stays dark in both themes — DESIGN.md
        \`stage-background-embedded\` — so everything drawn over it (loader,
-       placeholder, the AR action) is styled for a dark ground. */
+       placeholder) is styled for a dark ground; the AR action uses host chrome. */
     :root {
       color-scheme: light;
       --sv-surface: #ffffff;
@@ -247,7 +250,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         --sv-surface: #0d1117;
         --sv-on-surface: #f3f4f6;
         --sv-on-surface-dim: #a4abb7;
-        --sv-on-surface-faint: #6b7280;
+        --sv-on-surface-faint: #a4abb7;
         --sv-outline-subtle: #21262d;
         --sv-chip: #21262d;
         --sv-link: #a4c1ff;
@@ -255,7 +258,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         --sv-primary-hover: #b8d0ff;
         --sv-on-primary: #0d1117;
         --sv-card: #232a39;
-        --sv-stage: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+        --sv-stage: #0b0f16;
       }
     }
     :root[data-theme="dark"] {
@@ -263,7 +266,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       --sv-surface: #0d1117;
       --sv-on-surface: #f3f4f6;
       --sv-on-surface-dim: #a4abb7;
-      --sv-on-surface-faint: #6b7280;
+      --sv-on-surface-faint: #a4abb7;
       --sv-outline-subtle: #21262d;
       --sv-chip: #21262d;
       --sv-link: #a4c1ff;
@@ -271,7 +274,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       --sv-primary-hover: #b8d0ff;
       --sv-on-primary: #0d1117;
       --sv-card: #232a39;
-      --sv-stage: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+      --sv-stage: #0b0f16;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -297,7 +300,9 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       gap: 8px;
       border-bottom: 1px solid var(--sv-outline-subtle);
     }
-    #header strong { font-size: 0.95rem; font-weight: 600; }
+    #heading { min-width: 0; }
+    #real-size { display: block; margin-top: 3px; font-size: 0.75rem; color: var(--sv-on-surface-dim); }
+    #header strong { overflow-wrap: anywhere; font-size: 0.95rem; font-weight: 600; }
     #brand {
       font-size: 0.75rem;
       color: var(--sv-on-surface-dim);
@@ -317,7 +322,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       width: 100%;
       height: 100%;
       background: transparent;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.65s cubic-bezier(0.2, 0, 0, 1);
     }
     #placeholder, #loader, #error {
       position: absolute;
@@ -334,15 +339,12 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       background: var(--sv-stage);
     }
     [hidden] { display: none !important; }
-    #loader .spinner {
-      width: 28px;
-      height: 28px;
-      border: 3px solid #30363d;
-      border-top-color: #a4c1ff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+    #loader svg { color: #adc6ff; animation: breathe 2.4s ease-in-out infinite; }
+    #loader { font-size: 0.8rem; letter-spacing: 0.02em; }
+    @keyframes breathe {
+      0%, 100% { opacity: 0.3; transform: translateY(3px) scale(0.96); }
+      50% { opacity: 0.85; transform: translateY(-3px) scale(1); }
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
     #error { color: #ffb4ab; }
     #placeholder svg { opacity: 0.5; }
     #footer {
@@ -367,10 +369,9 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
        also gets a QR code of the same link, because AR happens on the
        phone in a pocket, not on the monitor. */
     #ar {
-      position: absolute;
-      left: 12px;
-      right: 12px;
-      bottom: 12px;
+      flex: 0 0 auto;
+      padding: 12px 16px;
+      background: var(--sv-surface);
       z-index: 1;
       display: flex;
       justify-content: center;
@@ -392,28 +393,29 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       font-weight: 600;
       line-height: 1.2;
       text-decoration: none;
-      white-space: nowrap;
+      text-align: center;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease;
     }
     #ar-open:hover { background: var(--sv-primary-hover); }
     #ar-open:active { transform: scale(0.97); }
-    #ar-open:focus-visible { outline: 2px solid #ffffff; outline-offset: 3px; }
+    #ar-open:focus-visible { outline: 2px solid var(--sv-link); outline-offset: 3px; }
     #ar-open svg { flex: 0 0 auto; }
     #ar .long, #ar-qr, #ar-scan { display: none; }
     #ar.wide .long { display: inline; }
-    #ar.wide.has-qr { justify-content: flex-end; }
+    #ar.wide.has-qr { justify-content: center; }
     #ar.wide.has-qr #ar-card {
-      padding: 12px;
-      border-radius: 16px;
-      background: var(--sv-card);
+      padding: 0;
+      border-radius: 12px;
+      background: var(--sv-surface);
       color: var(--sv-on-surface);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      box-shadow: none;
     }
     #ar.wide.has-qr #ar-qr {
       display: block;
-      width: 104px;
-      height: 104px;
+      width: ${space ? 160 : 128}px;
+      height: ${space ? 160 : 128}px;
+      flex: 0 0 auto;
       padding: 6px;
       border-radius: 8px;
       background: #ffffff;
@@ -423,31 +425,40 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
     #ar-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
     #ar-scan strong { font-size: 0.875rem; font-weight: 600; }
     #ar-scan span { font-size: 0.75rem; color: var(--sv-on-surface-dim); }
-    #ar.wide.has-qr #ar-open { min-height: 36px; padding: 8px 14px; font-size: 0.8rem; box-shadow: none; }
+    #ar.wide.has-qr #ar-open { min-height: 44px; box-shadow: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #loader svg { animation: none; opacity: 0.6; }
+      #canvas, #ar-open { transition: none; }
+    }
   </style>
 </head>
 <body>
   <div id="stage">
     <div id="header">
-      <strong id="title">SceneView 3D Viewer</strong>
+      <div id="heading"><strong id="title">${space ? "See it at real size" : "SceneView 3D Viewer"}</strong><span id="real-size" hidden></span></div>
       <span id="brand">Powered by <a href="https://sceneview.github.io" target="_blank" rel="noopener">SceneView</a></span>
     </div>
     <div id="canvas-wrap">
-      <canvas id="canvas" style="opacity:0" role="img" aria-label="3D model"></canvas>
-      <div id="loader"><div class="spinner"></div><div>Loading SceneView renderer…</div></div>
+      <canvas id="canvas" style="opacity:0" role="img" tabindex="0" aria-label="3D model"></canvas>
+      <div id="loader" role="status" aria-live="polite">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+          <path d="M12 2 4 6v12l8 4 8-4V6l-8-4Z M4 6l8 4 8-4 M12 22V10"/>
+        </svg><div>${space ? "Putting its size in perspective…" : "Bringing your model into view…"}</div>
+      </div>
       <div id="placeholder" hidden>
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 2 4 6v12l8 4 8-4V6l-8-4Z"/>
           <path d="m4 6 8 4 8-4"/>
           <path d="M12 22V10"/>
         </svg>
-        <div>No 3D model URL provided</div>
-        <div style="font-size:0.8rem">Pass <code style="background:#21262d;padding:2px 6px;border-radius:3px">modelUrl</code> in structuredContent or as a query parameter.</div>
+        <div>${space ? "No dimensions provided" : "No 3D model URL provided"}</div>
+        <div style="font-size:0.8rem">${space ? "Ask to see an object’s width, height and depth in your room." : 'Pass <code style="background:#21262d;padding:2px 6px;border-radius:3px">modelUrl</code> in structuredContent or as a query parameter.'}</div>
       </div>
       <div id="error" hidden>
-        <div>Could not load model</div>
+        <div>Could not load preview</div>
         <div id="error-detail" style="font-size:0.75rem;color:#a4abb7"></div>
       </div>
+    </div>
       <div id="ar" hidden>
         <div id="ar-card">
           <div id="ar-qr" role="img" aria-label="QR code: scan with your phone to open this model in AR"></div>
@@ -459,25 +470,25 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
                 <path d="m12 7 4.5 2.5v5L12 17l-4.5-2.5v-5L12 7Z"/>
                 <path d="m7.5 9.5 4.5 2.5 4.5-2.5M12 12v5"/>
               </svg>
-              <span>Open in AR<span class="long"> on your phone</span></span>
+              <span>${space ? "See it at real size in your room" : 'Open in AR<span class="long"> on your phone</span>'}</span>
             </a>
           </div>
         </div>
       </div>
-    </div>
     <div id="footer">
-      <span class="pill" id="format">GLB</span>
-      <span class="pill" id="engine">Filament.js · WebGL2 · WASM</span>
-      <span style="margin-left:auto" id="hint">Drag to orbit · Scroll to zoom</span>
+      <span class="pill" id="format">${space ? "cm" : "GLB"}</span>
+      <span class="pill" id="engine">${space ? "Size preview" : "3D preview"}</span>
+      <span style="margin-left:auto" id="hint">${space ? "Human reference · 1.75 m" : "Drag to orbit · Scroll to zoom"}</span>
     </div>
   </div>
-  <script type="text/plain" id="fallback-source">${WIDGET_FALLBACK_JS}</script>
   <script>
     (function () {
+      var SPACE_WIDGET = ${space};
       var WIDGET_VERSION = "${PACKAGE_VERSION}";
       var IBL_URL = "${NEUTRAL_IBL_URL}";
       var FILAMENT_URL = "${FILAMENT_JS_URL}";
       var SCENEVIEW_URL = "${SCENEVIEW_JS_URL}";
+      var FALLBACK_URL = "${FALLBACK_JS_URL}";
       // The 3MF converter (#3482), fetched only when a payload needs it.
       var CONVERTER_URL = "${SCENEVIEW_WEB_URL}";
 
@@ -487,6 +498,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       var placeholder = document.getElementById("placeholder");
       var errorEl = document.getElementById("error");
       var errorDetail = document.getElementById("error-detail");
+      var sizeEl = document.getElementById("real-size");
       var formatEl = document.getElementById("format");
 
       // What is on screen right now, and the payload waiting for the renderer.
@@ -497,6 +509,15 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       var rendererPromise = null;
       var rendererKind = null;
       var disposed = false;
+      var interacted = false;
+      var canvasWrap = document.getElementById("canvas-wrap");
+      function stopTurntable() {
+        interacted = true;
+        if (viewer && viewer.setAutoRotate) viewer.setAutoRotate(false);
+      }
+      ["pointerdown", "wheel", "keydown"].forEach(function (event) {
+        canvasWrap.addEventListener(event, stopTurntable, { capture: true, passive: true });
+      });
       var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       // ── Payload sources, in priority order ───────────────────────────────
@@ -510,6 +531,17 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
 
       function normalise(sc) {
         if (!sc || typeof sc !== "object") return null;
+        if (SPACE_WIDGET) {
+          if (!Array.isArray(sc.sizeCm) || sc.sizeCm.length !== 3 || sc.sizeCm.some(function (v) {
+            return typeof v !== "number" || !Number.isFinite(v) || v <= 1 || v > 1000;
+          }) || typeof sc.label !== "string" || (sc.placement !== "floor" && sc.placement !== "table")) return null;
+          try {
+            var link = new URL(sc.url);
+            if (link.origin !== "https://sceneview.github.io" || link.pathname !== "/open" ||
+                link.searchParams.get("demo") !== "spatial-answer" || !link.searchParams.get("answer")) return null;
+          } catch (e) { return null; }
+          return sc;
+        }
         if (typeof sc.modelUrl !== "string" || !sc.modelUrl) return null;
         return sc;
       }
@@ -579,7 +611,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
           method: "ui/initialize",
           params: {
             protocolVersion: "2026-01-26",
-            appInfo: { name: "sceneview-3d-viewer", version: WIDGET_VERSION },
+            appInfo: { name: "${space ? "sceneview-show-in-space" : "sceneview-3d-viewer"}", version: WIDGET_VERSION },
             appCapabilities: {},
           },
         });
@@ -600,6 +632,11 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
 
       function fromQuery() {
         var p = new URLSearchParams(location.search);
+        if (SPACE_WIDGET) return normalise({
+          sizeCm: [Number(p.get("widthCm")), Number(p.get("heightCm")), Number(p.get("depthCm"))],
+          label: p.get("label") || "Size preview", placement: p.get("placement") || "floor",
+          dimensionSource: p.get("dimensionSource") || "user", url: p.get("url"),
+        });
         var modelUrl = p.get("modelUrl") || p.get("src");
         if (!modelUrl) return null;
         return {
@@ -658,7 +695,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       }
 
       function updateArAction(data) {
-        arLink = data.ar === false ? null : openInArUrl(data.modelUrl, linkSource());
+        arLink = SPACE_WIDGET ? data.url : (data.ar === false ? null : openInArUrl(data.modelUrl, linkSource()));
         arEl.classList.remove("has-qr");
         arQr.textContent = "";
         if (!arLink) { arEl.hidden = true; return; }
@@ -754,15 +791,27 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       // ── Rendering ────────────────────────────────────────────────────────
 
       function render(data) {
-        if (disposed || (!pending && viewer && rendered && JSON.stringify(rendered) === JSON.stringify(data))) return;
+        if (disposed || (!pending && (viewer || SPACE_WIDGET) && rendered && JSON.stringify(rendered) === JSON.stringify(data))) return;
         pending = data;
+        canvas.style.opacity = "0";
+        sizeEl.hidden = true;
         placeholder.hidden = true;
         errorEl.hidden = true;
         loader.hidden = false;
-        titleEl.textContent = cleanTitle(data.title) || "SceneView 3D Viewer";
+        titleEl.textContent = cleanTitle(SPACE_WIDGET ? data.label : data.title) || "SceneView 3D Viewer";
         // Before the model loads, and whether or not it does: a file this
         // browser cannot draw may still open in the app.
         updateArAction(data);
+        if (SPACE_WIDGET) {
+          try {
+            drawSpace(data);
+            rendered = data; pending = null;
+            loader.hidden = true; canvas.style.opacity = "1";
+            document.documentElement.dataset.renderer = "canvas2d";
+            notifyReady();
+          } catch (err) { fail(err); }
+          return;
+        }
         canvas.setAttribute("aria-label", data.alt || data.title || "3D model");
         var ext = (data.modelUrl.split("?")[0].split(".").pop() || "GLB").toUpperCase();
         formatEl.textContent = ext === "GLTF" ? "glTF" : ext;
@@ -775,6 +824,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
           } catch (err) { if (pending === data && !disposed) fail(err); }
         });
       }
+
+      ${space ? SPACE_DRAWING_JS : ""}
 
       // ── 3MF (#3482) ──────────────────────────────────────────────────────
       //
@@ -858,7 +909,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
             // WASM compilation can succeed while Filament's initialization fails.
             // Keep a fresh WebGL context for the fallback in that case.
             console.warn("SceneView: Filament failed; trying the WASM-free renderer.", err);
-            useFallback();
+            await useFallback();
             resetCanvas();
             await startWith(data, url);
           }
@@ -885,7 +936,11 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
           var creation = factory.modelViewer(canvas, url, {
             backgroundColor: [0, 0, 0, 0],
             lightIntensity: 150000,
-            autoRotate: data.autoRotate !== false && !reducedMotion,
+            autoRotate: data.autoRotate !== false && !reducedMotion && !interacted,
+            studio: {
+              theme: "dark", environment: IBL_URL, shadow: 0.9, reflection: 0.08,
+              top: "#0b0f16", horizon: "#0b0f16", floor: "#111722", pool: "#232d40",
+            },
             fov: 35,
             iblUrl: IBL_URL,
           }).then(function (value) {
@@ -896,7 +951,45 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
             viewer = await deadline(creation, 30000, "The renderer took too long to start. Try the AR link.");
           } catch (error) { accepted = false; throw error; }
         }
-        if (pending === data && !disposed) reveal(data);
+        if (pending === data && !disposed) {
+          framePreview();
+          updateRealSize();
+          reveal(data);
+        }
+      }
+
+      function framePreview() {
+        if (!viewer || interacted) return;
+        if (viewer.frameModel) viewer.frameModel({ fill: 0.8 });
+        if (viewer.getCameraOrbit && viewer.setCameraOrbit) {
+          var orbit = viewer.getCameraOrbit();
+          // Keep the renderer's front-facing three-quarter angle.
+          viewer.setCameraOrbit({ height: orbit.target[1] + orbit.radius * 0.12 });
+        }
+      }
+      var frameObserver = typeof ResizeObserver === "function" ? new ResizeObserver(function () {
+        if (!pending) framePreview();
+      }) : null;
+      if (frameObserver) frameObserver.observe(canvasWrap);
+
+      function updateRealSize() {
+        sizeEl.hidden = true;
+        try {
+          var size;
+          if (viewer.getModelSize) size = viewer.getModelSize();
+          // sceneview.js exposes corrected glTF bounds internally, including quantized
+          // positions. Keep this optional: older website builds omit the readout safely.
+          else if (viewer._asset && viewer._assetBox) {
+            var box = viewer._assetBox(viewer._asset);
+            size = [0, 1, 2].map(function (axis) { return box.max[axis] - box.min[axis]; });
+          }
+          // glTF units are metres; reject degenerate, microscopic and building-scale
+          // boxes. This is a scale plausibility check, never a measurement guarantee.
+          if (!size || size.some(function (v) { return !Number.isFinite(v) || v < 0.001 || v > 20; }) || size[1] < 0.01) return;
+          var height = size[1];
+          sizeEl.textContent = "≈ " + (height < 1 ? Math.round(height * 100) + " cm" : Number(height.toFixed(1)) + " m") + " tall";
+          sizeEl.hidden = false;
+        } catch (e) { /* optional readout */ }
       }
 
       function reveal(data) {
@@ -905,10 +998,10 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         loader.hidden = true;
         errorEl.hidden = true;
         canvas.style.opacity = "1";
-        if (viewer && viewer.setAutoRotate) viewer.setAutoRotate(data.autoRotate !== false && !reducedMotion);
+        if (viewer && viewer.setAutoRotate) viewer.setAutoRotate(data.autoRotate !== false && !reducedMotion && !interacted);
         document.documentElement.dataset.renderer = rendererKind;
         document.getElementById("engine").textContent = rendererKind === "filament"
-          ? "Filament.js · WebGL2 · WASM" : "WebGL2 · compatibility mode";
+          ? "Interactive 3D" : "Compatibility preview";
         notifyReady();
       }
 
@@ -937,13 +1030,10 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         }), 15000, "The renderer download timed out.");
       }
 
-      function useFallback() {
-        if (!window.SceneViewFallback) {
-          var script = document.createElement("script");
-          script.textContent = document.getElementById("fallback-source").textContent;
-          document.head.appendChild(script);
-          script.remove();
-        }
+      var fallbackScriptPromise = null;
+      async function useFallback() {
+        if (!fallbackScriptPromise) fallbackScriptPromise = loadScript(FALLBACK_URL);
+        await fallbackScriptPromise;
         if (!window.SceneViewFallback) throw new Error("This host could not start the 3D renderer. Use the AR link below.");
         rendererKind = "fallback";
       }
@@ -960,7 +1050,7 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
             rendererKind = "filament";
           } catch (error) {
             console.info("SceneView: using the WASM-free renderer because Filament is unavailable.", error);
-            useFallback();
+            await useFallback();
           }
         })();
         return rendererPromise;
@@ -969,6 +1059,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
       function dispose() {
         disposed = true;
         pending = null;
+        if (frameObserver) frameObserver.disconnect();
+        ${space ? "if (spaceObserver) spaceObserver.disconnect();" : ""}
         if (viewer) { viewer.dispose(); viewer = null; }
       }
       window.addEventListener("pagehide", dispose);
@@ -988,6 +1080,10 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
   </script>
 </body>
 </html>`;
+}
+
+export const WIDGET_3D_VIEWER_HTML = buildWidgetHtml(false);
+export const WIDGET_SHOW_IN_SPACE_HTML = buildWidgetHtml(true);
 
 /** Resource descriptor as returned by `resources/list`. */
 export interface WidgetResourceDescriptor {
@@ -1012,6 +1108,12 @@ const WIDGETS: Record<string, { name: string; description: string; html: string 
     description:
       "MCP Apps widget: interactive SceneView.js + Filament.js viewer for a GLB / glTF model, rendered inline by the host when `view_3d_model` is called.",
     html: WIDGET_3D_VIEWER_HTML,
+  },
+  [WIDGET_SHOW_IN_SPACE_URI]: {
+    name: "SceneView · Show in space",
+    description:
+      "Dimensioned size preview with a human reference and a phone link to the SceneView app.",
+    html: WIDGET_SHOW_IN_SPACE_HTML,
   },
 };
 

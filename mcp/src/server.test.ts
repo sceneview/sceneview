@@ -15,7 +15,12 @@ import type { ClientCapabilities } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 import { buildDiscoverResult, SERVER_INSTRUCTIONS } from "./discover.js";
 import { createSceneViewServer } from "./server.js";
-import { MCP_APP_MIME_TYPE, UI_EXTENSION_ID, WIDGET_3D_VIEWER_URI } from "./widgets.js";
+import {
+  MCP_APP_MIME_TYPE,
+  UI_EXTENSION_ID,
+  WIDGET_3D_VIEWER_URI,
+  WIDGET_SHOW_IN_SPACE_URI,
+} from "./widgets.js";
 
 /** A connected client/server pair over in-memory transports. */
 async function connect(capabilities: ClientCapabilities): Promise<Client> {
@@ -118,5 +123,50 @@ describe("stdio server: instructions at connect time", () => {
     expect(referencedTools.length).toBeGreaterThanOrEqual(5);
     for (const name of referencedTools) expect(toolNames, name).toContain(name);
     for (const uri of referencedUris) expect(uris, uri).toContain(uri);
+  });
+});
+
+describe("show_in_space MCP resource delivery", () => {
+  it("serves the registered widget over the real MCP protocol", async () => {
+    const client = await connect(uiCapabilities([MCP_APP_MIME_TYPE]));
+    try {
+      const { resources } = await client.listResources();
+      expect(resources.some((r) => r.uri === WIDGET_SHOW_IN_SPACE_URI)).toBe(true);
+      const read = await client.readResource({ uri: WIDGET_SHOW_IN_SPACE_URI });
+      expect(read.contents[0]).toMatchObject({
+        uri: WIDGET_SHOW_IN_SPACE_URI,
+        mimeType: MCP_APP_MIME_TYPE,
+        text: expect.stringContaining("data.sizeCm[0] / 100"),
+      });
+      const result = await client.callTool({
+        name: "show_in_space",
+        arguments: { widthCm: 80, heightCm: 75, depthCm: 40, label: "Desk" },
+      });
+      expect(result._meta).toMatchObject({ ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI } });
+    } finally {
+      await client.close();
+    }
+  });
+  it("keeps text unchanged when the host declines widgets", async () => {
+    const client = await connect(uiCapabilities(["text/uri-list"]));
+    try {
+      const { tools } = await client.listTools();
+      expect(tools.find((t) => t.name === "show_in_space")?._meta?.ui).toBeUndefined();
+      const result = await client.callTool({
+        name: "show_in_space",
+        arguments: { widthCm: 80, heightCm: 75, depthCm: 40, label: "Desk" },
+      });
+      expect(result._meta?.ui).toBeUndefined();
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: expect.stringContaining(
+            "Desk: 80 × 75 × 40 cm — https://sceneview.github.io/open?demo=spatial-answer&answer="
+          ),
+        },
+      ]);
+    } finally {
+      await client.close();
+    }
   });
 });

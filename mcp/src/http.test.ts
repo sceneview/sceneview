@@ -194,7 +194,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(content[0]?.text).toBe("Unknown tool: no_such_tool");
   });
 
-  it("resources/list includes the widget after the four historical resources", async () => {
+  it("resources/list includes both widgets after the four historical resources", async () => {
     const body = await rpc("resources/list");
     const resources = body.result?.resources as Array<{ uri: string; mimeType: string }>;
     expect(resources.map((r) => r.uri)).toEqual([
@@ -203,6 +203,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
       "examples://demo-with-settings",
       "examples://sketchfab-streaming",
       "ui://widget/3d-viewer.html",
+      "ui://widget/show-in-space.html",
     ]);
   });
 

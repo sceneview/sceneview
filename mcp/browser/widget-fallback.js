@@ -1,7 +1,7 @@
 /**
  * WASM-free renderer for hosts whose iframe CSP cannot run Filament.
- * Bundled into the MCP HTML: no CDN, workers, dynamic eval, or decoder downloads.
- * See src/vendor/README.md for the pinned dependency and reproducible bundle command.
+ * Loaded lazily from the website: no workers, dynamic eval, or decoder downloads.
+ * See website-static/js/widget-fallback.README.md for the pinned dependency and reproducible bundle command.
  */
 import {
   ACESFilmicToneMapping, AnimationMixer, Box3, CanvasTexture, Clock,
@@ -76,6 +76,15 @@ async function modelViewer(canvas, url, options = {}) {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
   }
+  function frameModel({ fill = 0.8 } = {}) {
+    if (!model) return;
+    const halfFov = camera.fov * Math.PI / 360;
+    const sweep = Math.hypot(size.x, size.z) / 2;
+    const tangent = fill * Math.tan(halfFov);
+    const distance = Math.max(sweep + size.y / (2 * tangent), sweep * Math.sqrt(1 + 1 / (tangent * camera.aspect) ** 2));
+    camera.position.set(Math.sin(0.6) * distance, size.y / 2 + distance * 0.12, Math.cos(0.6) * distance);
+    controls.update();
+  }
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
@@ -110,9 +119,7 @@ async function modelViewer(canvas, url, options = {}) {
       model.position.y += size.y / 2;
       scene.add(model);
       controls.target.set(0, size.y / 2, 0);
-      const halfFov = camera.fov * Math.PI / 360;
-      const distance = Math.max(size.y, size.x / camera.aspect) / (2 * Math.tan(halfFov)) + size.z / 2;
-      camera.position.set(distance * 0.28, size.y / 2 + distance * 0.12, distance * 1.16);
+      frameModel();
       camera.near = Math.max(extent / 1000, 0.0001);
       camera.far = extent * 100;
       camera.updateProjectionMatrix();
@@ -125,6 +132,8 @@ async function modelViewer(canvas, url, options = {}) {
       for (const clip of gltf.animations) mixer.clipAction(clip).play();
       renderer.render(scene, camera);
     },
+    getModelSize() { return size.toArray(); },
+    frameModel,
     setAutoRotate(enabled) { controls.autoRotate = enabled; },
     dispose() {
       if (disposed) return;
