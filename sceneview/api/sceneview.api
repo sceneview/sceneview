@@ -3130,8 +3130,10 @@ public final class io/github/sceneview/model/AnimationEnvelope {
 public final class io/github/sceneview/model/AnimationEnvelopeKt {
 	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;II)Lio/github/sceneview/model/AnimationEnvelope;
 	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;I)Lio/github/sceneview/model/AnimationEnvelope;
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Collection;I)Lio/github/sceneview/model/AnimationEnvelope;
 	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;IIILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Collection;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 }
 
 public final class io/github/sceneview/model/ModelInstanceKt {

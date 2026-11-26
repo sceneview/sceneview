@@ -141,6 +141,7 @@ import io.github.sceneview.demo.ui.viewer.rememberShowroomStage
 import io.github.sceneview.demo.ui.viewer.showroomIsDark
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.viewerEnvelopeFraming
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
 import io.github.sceneview.demo.demos.internal.SurpriseRolls
@@ -176,6 +177,10 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.Transform
+import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.model.animationEnvelope
 import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
@@ -1678,10 +1683,36 @@ private fun SingleModelSection(
                 null
             }
             val restingAspect = sceneFrame?.restingAspect
-            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
+            val framingEnvelope = remember(
+                activeModelInstance, modelScale, frontYaw, modelCenter,
+            ) {
+                val instance = activeModelInstance ?: return@remember null
+                val animationCount = runCatching { instance.animator.animationCount }.getOrDefault(0)
+                val qualifies = runCatching { instance.skinCount > 0 && animationCount > 0 }
+                    .getOrDefault(false)
+                if (!qualifies) return@remember null
+                val (rx, rz) = DemoMath.rotateAroundCentre(
+                    modelCenter.x, modelCenter.z, frontYaw,
+                )
+                instance.model.animationEnvelope(
+                    clips = (0 until animationCount).take(8),
+                    samples = 24,
+                ).transformed(
+                    Transform(
+                        position = Position(modelCenter.x - rx, 0f, modelCenter.z - rz),
+                        quaternion = Rotation(y = frontYaw).toQuaternion(),
+                        scale = Scale(modelScale),
+                    )
+                )
+            }
+            val framing = remember(
+                bounds, framingEnvelope, maxWidth, maxHeight, topInset, bottomInset, restingAspect,
+            ) {
                 val extents = bounds?.extents ?: return@remember null
                 viewerHomeFraming(
                     extents = extents,
+                    center = modelCenter,
+                    envelope = framingEnvelope,
                     viewportWidth = maxWidth.value,
                     viewportHeight = maxHeight.value,
                     topInset = topInset.value,
@@ -1752,7 +1783,11 @@ private fun SingleModelSection(
                 val f = aimFraming()
                 val c = liveCenter.value
                 if (f == null) c
-                else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
+                else Position(
+                    c.x + f.targetOffset.first,
+                    c.y + f.targetOffset.second,
+                    c.z + f.targetOffset.third,
+                )
             }
             // Started over on the content alone (#3403 / #3404, see above) — NOT `recenterGeneration`.
             // Rebuilding on every recenter tap used to be how the flight got a fresh start, but a
@@ -1779,7 +1814,11 @@ private fun SingleModelSection(
                         val f = aimFraming()
                         val c = liveCenter.value
                         if (f == null) Position(c.x, c.y, c.z + 1.4f)
-                        else Position(c.x, c.y + f.eyeOffset.second, c.z + f.eyeOffset.third)
+                        else Position(
+                            c.x + f.eyeOffset.first,
+                            c.y + f.eyeOffset.second,
+                            c.z + f.eyeOffset.third,
+                        )
                     },
                     target = livePivot,
                     progress = {
@@ -2940,6 +2979,8 @@ internal fun viewerSceneCover(chrome: PaddingValues, lightingCover: Dp): Padding
  */
 internal fun viewerHomeFraming(
     extents: Size,
+    center: Position = Position(),
+    envelope: AnimationEnvelope? = null,
     viewportWidth: Float,
     viewportHeight: Float,
     topInset: Float,
@@ -2949,7 +2990,15 @@ internal fun viewerHomeFraming(
     // Low for a car, higher for a watch: the pitch follows the subject's longest side.
     val pitch = ShowroomMath.pitchDegrees(maxOf(extents.x, extents.y, extents.z))
     return if (restingAspect != null) {
-        DemoMath.viewerFraming(
+        envelope?.let {
+            viewerEnvelopeFraming(
+                envelope = it, center = center,
+                viewportWidth = restingAspect, viewportHeight = 1f,
+                topInset = 0f, bottomInset = 0f,
+                verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+                pitchDegrees = pitch,
+            )
+        } ?: DemoMath.viewerFraming(
             extentX = extents.x, extentY = extents.y, extentZ = extents.z,
             viewportWidth = restingAspect, viewportHeight = 1f,
             topInset = 0f, bottomInset = 0f,
@@ -2957,7 +3006,15 @@ internal fun viewerHomeFraming(
             pitchDegrees = pitch,
         )
     } else {
-        DemoMath.viewerFraming(
+        envelope?.let {
+            viewerEnvelopeFraming(
+                envelope = it, center = center,
+                viewportWidth = viewportWidth, viewportHeight = viewportHeight,
+                topInset = topInset, bottomInset = bottomInset,
+                verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+                pitchDegrees = pitch,
+            )
+        } ?: DemoMath.viewerFraming(
             extentX = extents.x, extentY = extents.y, extentZ = extents.z,
             viewportWidth = viewportWidth, viewportHeight = viewportHeight,
             topInset = topInset, bottomInset = bottomInset,
