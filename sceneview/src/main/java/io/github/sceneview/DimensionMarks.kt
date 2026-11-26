@@ -146,8 +146,9 @@ fun SceneScope.DimensionMarks(
         widthMeters = lw, heightMeters = lh, scale = s, cameraPositionProvider = facing, apply = tag,
     )
     TagSlot(clearance, half, Position(0f, half + 0.03f, front + 0.02f)) { Tag(labels.x) }
-    // Outside the depth line by half a tag, so the object never hides it.
-    TagSlot(clearance, half, Position(right + 0.03f + lw * labelScale / 2f, half + 0.03f, 0f), Rotation(y = 90f)) {
+    // Outside the depth line by half a tag, so the object never hides it, and outside the height
+    // line too when [heightOffset] moves it out: the post ran up through the depth tag (#5272).
+    TagSlot(clearance, half, Position(g.depthTagX(right, hx, lw * labelScale / 2f), half + 0.03f, 0f), Rotation(y = 90f)) {
         Tag(labels.z)
     }
     if (heightTagSide != null) {
@@ -177,6 +178,17 @@ internal object DimensionMarksGeometry {
     const val TAG_WIDTH = 0.34f
     const val TAG_HEIGHT = 0.085f
     const val FONT_SIZE = 82f
+
+    /** Gap between a line and the near edge of the depth tag. */
+    const val DEPTH_TAG_GAP = 0.03f
+
+    /**
+     * Centre of the depth tag on X: [DEPTH_TAG_GAP] beyond whichever stands further out, the depth
+     * line at [right] or the height line at [heightX], so neither line crosses the tag of
+     * half-width [tagHalfWidth] (#5272).
+     */
+    fun depthTagX(right: Float, heightX: Float, tagHalfWidth: Float): Float =
+        maxOf(right, heightX) + DEPTH_TAG_GAP + tagHalfWidth
 
     /**
      * Whether a tag spanning [bottom] to [top] on screen (-1 at the bottom edge, 1 at the top)
