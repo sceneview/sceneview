@@ -264,6 +264,9 @@ class MainActivity : ComponentActivity() {
         // Replace the activity intent so subsequent re-creations see the new
         // deep link, not the original launcher intent.
         setIntent(intent)
+        // The demo on screen may take it in place (Ask in AR's next question): no navigation
+        // and no reset below, so its AR session and any replay keep running.
+        if (DemoSettings.inPlaceIntentHandler?.invoke(intent) == true) return
         // Same dual-ingress policy as onCreate — `--es demo` first, URL second.
         // Both go through DeepLinkRouter.validate / .parse so unknown ids are
         // dropped rather than routed to PlaceholderDemo. See #958.

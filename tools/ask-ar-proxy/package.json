@@ -1,0 +1,17 @@
+{
+  "name": "ask-ar-proxy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.14.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "5.1.2",
+    "wrangler": "4.168.0"
+  }
+}

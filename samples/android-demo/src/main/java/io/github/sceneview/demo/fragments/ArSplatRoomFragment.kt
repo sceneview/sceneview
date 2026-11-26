@@ -21,7 +21,7 @@ object ArSplatRoomFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_splat_room_subtitle,
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.House,
-        order = 25,
+        order = 26,
         addedIn = "4.45.0",
         // #4231: the dollhouse shows the dense coloured cloud on the real floor.
         updatedIn = "4.52.0",

@@ -651,6 +651,9 @@ fun DemoScaffold(
     // status pill or a capture button is not chrome, and stays when the dock goes.
     overlaysFollowChrome: Boolean = false,
     dockHidden: Boolean = false,
+    // Filming (a debug extra a demo reads): the identity row and the dock stay hidden whatever a
+    // scene tap, TalkBack or QA mode says. The demo's own bands are its to keep or drop.
+    chromeHidden: Boolean = false,
     themedStage: Boolean = false,
     // The stage a themed demo draws in the same colours in both themes (3D Scan's result keeps
     // its capture's dark stage, 2026-11-13): the scene's ground, the ground under the status bar
@@ -809,7 +812,7 @@ fun DemoScaffold(
         label = "demo-full-screen-framing",
     )
 
-    val chromeVisible = !focused && (chromeToggled || touchExploration || DemoSettings.qaMode)
+    val chromeVisible = !focused && !chromeHidden && (chromeToggled || touchExploration || DemoSettings.qaMode)
     // A demo that opted in (#4379) loses its overlays with the chrome: the scene gets the window.
     val overlaysShown = !overlaysFollowChrome || chromeVisible
 

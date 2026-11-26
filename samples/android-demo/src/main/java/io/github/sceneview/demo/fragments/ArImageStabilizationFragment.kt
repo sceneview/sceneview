@@ -17,7 +17,7 @@ object ArImageStabilizationFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_image_stabilization_subtitle,
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.VideoStable,
-        order = 41,
+        order = 42,
         addedIn = "4.0.8",
         tags = setOf("image stabilization", "ar", "camera", "stabilization", "eis"),
     )
