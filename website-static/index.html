@@ -265,9 +265,6 @@
           <div class="tabs" role="tablist" aria-label="Code for" data-sync="platform">
             <button class="tab" role="tab" id="t-compose" aria-controls="p-compose" aria-selected="true" data-key="compose" data-status="stable" data-status-label="Stable on Android" data-href="/docs/quickstart/">Compose</button>
             <button class="tab" role="tab" id="t-web" aria-controls="p-web" aria-selected="false" tabindex="-1" data-key="web" data-status="alpha" data-status-label="Alpha on the web" data-href="/docs/quickstart-web/">Web</button>
-            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-ios/">SwiftUI (end of life)</button>
-            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-flutter/">Flutter (end of life)</button>
-            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="eol" data-status-label="End of life at 4.68.0; no new releases" data-href="/docs/quickstart-react-native/">React Native (end of life)</button>
           </div>
 <div role="tabpanel" id="p-compose" aria-labelledby="t-compose"><pre data-tab="4"><code><span class="cl"><span class="c">// Android, Jetpack Compose</span></span>
 <span class="cl"><span class="k">@Composable</span></span>
@@ -283,20 +280,6 @@
 <span class="cl" style="--in:12"><span class="in">            </span>}</span>
 <span class="cl" style="--in:4"><span class="in">    </span>}</span>
 <span class="cl">}</span></code></pre><p class="codecard__hint">Drag <b>1.0f</b> sideways, or focus it and use the arrow keys.</p></div>
-<div role="tabpanel" id="p-swift" aria-labelledby="t-swift" hidden><pre data-tab="4"><code><span class="cl"><span class="c">// iOS, macOS and visionOS, SwiftUI</span></span>
-<span class="cl"><span class="k">struct</span> <span class="f">ModelScreen</span>: View {</span>
-<span class="cl" style="--in:4"><span class="in">    </span><span class="k">@State private var</span> model: ModelNode?</span>
-<span class="cl"></span>
-<span class="cl" style="--in:4"><span class="in">    </span><span class="k">var</span> body: <span class="k">some</span> View {</span>
-<span class="cl" style="--in:8"><span class="in">        </span><span class="f">SceneView</span> { root <span class="k">in</span></span>
-<span class="cl" style="--in:12"><span class="in">            </span><span class="k">if let</span> model { root.<span class="f">addChild</span>(model.entity) }</span>
-<span class="cl" style="--in:8"><span class="in">        </span>}</span>
-<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">contentID</span>(model != <span class="k">nil</span>)</span>
-<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">environment</span>(.studio)</span>
-<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">cameraControls</span>(.orbit)</span>
-<span class="cl" style="--in:8"><span class="in">        </span>.<span class="f">task</span> { model = <span class="k">try?</span> <span class="k">await</span> ModelNode.<span class="f">load</span>(<wbr><span class="nb"><span class="s" data-literal="usdz" data-dir="">"armchair.usdz"</span>) }</span></span>
-<span class="cl" style="--in:4"><span class="in">    </span>}</span>
-<span class="cl">}</span></code></pre></div>
 <div role="tabpanel" id="p-web" aria-labelledby="t-web" hidden><pre><code><span class="cl"><span class="c">&lt;!-- Web, Filament on WebAssembly --&gt;</span></span>
 <span class="cl"><span class="k">&lt;canvas</span> id=<span class="s">"viewer"</span><span class="k">&gt;&lt;/canvas&gt;</span></span>
 <span class="cl"><span class="k">&lt;script</span> src=<span class="s">"…/filament.js"</span><span class="k">&gt;&lt;/script&gt;</span></span>
@@ -304,21 +287,6 @@
 <span class="cl"><span class="k">&lt;script&gt;</span></span>
 <span class="cl" style="--in:2"><span class="in">  </span>SceneView.<span class="f">modelViewer</span>(<span class="s">"viewer"</span>, <span class="s" data-literal="glb">"models/armchair.glb"</span>)</span>
 <span class="cl"><span class="k">&lt;/script&gt;</span></span></code></pre></div>
-<div role="tabpanel" id="p-flutter" aria-labelledby="t-flutter" hidden><pre><code><span class="cl"><span class="c">// Flutter, Android and iOS</span></span>
-<span class="cl"><span class="k">final</span> controller = <span class="f">SceneViewController</span>();</span>
-<span class="cl"></span>
-<span class="cl"><span class="f">SceneView</span>(</span>
-<span class="cl" style="--in:2"><span class="in">  </span>controller: controller,</span>
-<span class="cl" style="--in:2"><span class="in">  </span>onViewCreated: () =&gt; controller.<span class="f">loadModel</span>(</span>
-<span class="cl" style="--in:4"><span class="in">    </span><span class="k">const</span> <span class="f">ModelNode</span>(modelPath: <span class="s" data-literal="glb" data-q="'">'models/armchair.glb'</span>),</span>
-<span class="cl" style="--in:2"><span class="in">  </span>),</span>
-<span class="cl">)</span></code></pre></div>
-<div role="tabpanel" id="p-rn" aria-labelledby="t-rn" hidden><pre><code><span class="cl"><span class="c">// React Native, Android and iOS</span></span>
-<span class="cl"><span class="k">&lt;</span><span class="f">SceneView</span></span>
-<span class="cl" style="--in:2"><span class="in">  </span>style={{ flex: <span class="n">1</span> }}</span>
-<span class="cl" style="--in:2"><span class="in">  </span>modelNodes={[{ <span class="nb">src: <span class="s" data-literal="glb" data-q="'">'models/armchair.glb'</span>,</span> <span class="nb">position: [<span class="n">0</span>, <span class="n">0</span>, <span class="n">-2</span>] }]}</span></span>
-<span class="cl" style="--in:2"><span class="in">  </span>cameraControlMode=<span class="s">"orbit"</span></span>
-<span class="cl"><span class="k">/&gt;</span></span></code></pre></div>
           <div class="codecard__foot">
             <span class="status status--stable" data-status>Stable on Android</span>
             <a class="codecard__link" href="/docs/quickstart/" data-quickstart>Compose quickstart</a>
@@ -400,7 +368,7 @@
           <div class="showcase-card__body">
             <span class="showcase-card__platforms">Android</span>
             <h3 class="h3">Will It Fit: Real-3D Clearance &amp; AR</h3>
-            <p>Real Pixel 4a Filament 3D doorway capture — check whether sofas, wardrobes, TVs, and cars clear turns, lifts, and boots.</p>
+            <p>Real-time Filament 3D clearance — check whether sofas, wardrobes, TVs, and fridges clear doorways, hallway turns, lifts, and car boots.</p>
             <div class="showcase-card__links">
               <a class="showcase-pill showcase-pill--primary" href="https://thomasgorisse.github.io/willitfit/">Check Fit</a>
               <a class="showcase-pill" href="https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&amp;referrer=utm_source%3Dsceneview%26utm_medium%3Dwebsite%26utm_campaign%3Dbuilt_with">Google Play</a>
