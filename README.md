@@ -1,4 +1,20 @@
-# SceneView
+<p align="center">
+  <a href="https://sceneview.github.io/">
+    <img src="website-static/assets/brand/sceneview-hero-banner.png" alt="SceneView — Declarative 3D & AR for Jetpack Compose & Web (Apache 2.0)" width="100%">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://central.sonatype.com/artifact/io.github.sceneview/sceneview"><img src="https://img.shields.io/maven-central/v/io.github.sceneview/sceneview?label=Android%203D&logo=android&color=34a853" alt="Android 3D"></a>
+  <a href="https://central.sonatype.com/artifact/io.github.sceneview/arsceneview"><img src="https://img.shields.io/maven-central/v/io.github.sceneview/arsceneview?label=Android%20AR&logo=android&color=34a853" alt="Android AR"></a>
+  <a href="https://www.npmjs.com/package/sceneview-web"><img src="https://img.shields.io/npm/v/sceneview-web?label=sceneview-web&logo=javascript&color=f7df1e" alt="sceneview-web"></a>
+  <a href="https://www.npmjs.com/package/sceneview-mcp"><img src="https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=npm&color=d97706" alt="MCP Server"></a>
+  <a href="https://github.com/sceneview/sceneview/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/sceneview/sceneview/ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
+  <a href="https://github.com/sceneview/sceneview/blob/main/LICENSE"><img src="https://img.shields.io/github/license/sceneview/sceneview?color=blue" alt="License"></a>
+  <a href="https://github.com/sceneview/sceneview"><img src="https://img.shields.io/github/stars/sceneview/sceneview?style=flat&color=yellow&logo=github" alt="GitHub Stars"></a>
+  <a href="https://discord.gg/UbNDDBTNqb"><img src="https://img.shields.io/discord/893787194295222292?color=7389D8&label=Discord&logo=discord&logoColor=ffffff" alt="Discord"></a>
+  <a href="https://opencollective.com/sceneview"><img src="https://img.shields.io/opencollective/all/sceneview?label=Open%20Collective&color=7FADF2&logo=opencollective" alt="Open Collective"></a>
+</p>
 
 > **The AI-first 3D & AR SDK for Jetpack Compose — and the web.**
 
@@ -38,25 +54,10 @@ SDK. The Niantic Spatial SDK samples use it for AR. Lenskart ships
 [Sceneform Maintained](https://github.com/sceneview/sceneform-android), SceneView's predecessor, and Safie presented
 SceneView in [a public talk](https://speakerdeck.com/jeromecha/mobile-dev-japan-number-3-safie-viewer-android-and-sceneview).
 
-**AI-first** means one thing here: an assistant that reads [`llms.txt`](./llms.txt) or
-[the MCP server](./mcp/) writes SceneView code that works on the first try. When it doesn't, the
-API or the doc gets fixed.
-
-<!-- Platforms -->
-[![Android 3D](https://img.shields.io/maven-central/v/io.github.sceneview/sceneview?label=Android%203D&logo=android&color=34a853)](https://central.sonatype.com/artifact/io.github.sceneview/sceneview)
-[![Android AR](https://img.shields.io/maven-central/v/io.github.sceneview/arsceneview?label=Android%20AR&logo=android&color=34a853)](https://central.sonatype.com/artifact/io.github.sceneview/arsceneview)
-[![SwiftUI end of life at 4.68.0](https://img.shields.io/badge/SwiftUI-4.68.0%20end%20of%20life-grey?logo=swift)](DEPRECATION.md)
-[![sceneview-web](https://img.shields.io/npm/v/sceneview-web?label=sceneview-web&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
-[![Flutter end of life at 4.68.0](https://img.shields.io/badge/Flutter-4.68.0%20end%20of%20life-grey)](DEPRECATION.md)
-[![React Native end of life at 4.68.0](https://img.shields.io/badge/React%20Native-4.68.0%20end%20of%20life-grey)](DEPRECATION.md)
-[![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=npm&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
-
-<!-- Status -->
-[![CI](https://img.shields.io/github/actions/workflow/status/sceneview/sceneview/ci.yml?branch=main&label=CI&logo=github)](https://github.com/sceneview/sceneview/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/sceneview/sceneview?color=blue)](https://github.com/sceneview/sceneview/blob/main/LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/sceneview/sceneview?style=flat&color=yellow&logo=github)](https://github.com/sceneview/sceneview)
-[![Discord](https://img.shields.io/discord/893787194295222292?color=7389D8&label=Discord&logo=discord&logoColor=ffffff)](https://discord.gg/UbNDDBTNqb)
-[![Open Collective](https://img.shields.io/opencollective/all/sceneview?label=Open%20Collective&color=7FADF2&logo=opencollective)](https://opencollective.com/sceneview)
+**AI-first** means one thing here: any assistant — Gemini / Antigravity, Cursor, GitHub Copilot,
+Codex, or Claude Code — reading [`llms.txt`](./llms.txt), [`AGENTS.md`](./AGENTS.md), or
+[the MCP server](./mcp/) (`npx -y sceneview-mcp`) writes SceneView code that works on the first
+try. When it doesn't, the API or the doc gets fixed.
 
 Using SceneView? You can [support it on Open Collective](https://opencollective.com/sceneview) or through [GitHub Sponsors](https://github.com/sponsors/sceneview).
 
@@ -69,8 +70,6 @@ Using SceneView? You can [support it on Open Collective](https://opencollective.
   <a href="https://apps.apple.com/us/app/sceneview-demo-sdk-samples/id6761329763"><img src="website-static/assets/brand/stores/app-store.svg" alt="Download on the App Store" height="56"></a>&nbsp;
   <a href="https://sceneview.github.io/web-demo/"><img src="website-static/assets/brand/stores/web-demo.svg" alt="Open the web demo" height="56"></a>
 </p>
-
-The iOS and macOS demo has no new builds after 4.69.7 — see [DEPRECATION.md](DEPRECATION.md).
 
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
@@ -92,10 +91,11 @@ with the recording attached, or send it from the app (any demo, Settings, then S
 
 ### Built with SceneView
 
-Two standalone apps built on top of SceneView:
+Live showcases and standalone apps powered by SceneView:
 
-- **[3D AR Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)** ([iOS](https://apps.apple.com/app/id6790808866)) — open `.glb`, `.stl` and `.obj` files or turn a photo into a 3D model and place it at real scale in AR.
-- **[Will It Fit](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)** — check whether a sofa, desk or appliance clears a door, hallway turn, lift or car boot, with an AR tape measure.
+- **[Living AR Dragon Showcase](https://thomasgorisse.github.io/arcamera/dragon/)** — 3D dragon anchored at true 1:1 scale on a real floor with ARCore + Filament, then animated in-scene.
+- **[3D AR Viewer](https://thomasgorisse.github.io/arcamera/)** ([Google Play](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with) · [App Store](https://apps.apple.com/us/app/3d-ar-viewer-ai-model-maker/id6790808866)) — inspect `.glb`, `.stl`, and `.obj` files or turn a photo into a 3D model and place it at real scale in AR.
+- **[Will It Fit](https://thomasgorisse.github.io/willitfit/)** ([Google Play](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)) — real-3D clearance & furniture fit in AR before moving day.
 
 ---
 
@@ -295,12 +295,13 @@ installable and the source stays in this repository — [what that means and the
 ### Your AI assistant
 
 ```bash
-claude mcp add sceneview -- npx -y sceneview-mcp   # Claude Code
-codex  mcp add sceneview -- npx -y sceneview-mcp   # Codex
+npx -y sceneview-mcp   # Standard stdio MCP server (works in any MCP client)
 ```
 
-Then ask: *"Add a 3D model viewer to my Compose screen."* Every other client is in
-[Use with AI](#use-with-ai).
+Works across **Gemini / Antigravity**, **Cursor**, **GitHub Copilot**, **Codex**, and
+**Claude Code** via `npx -y sceneview-mcp`, [`AGENTS.md`](./AGENTS.md), and
+[`llms.txt`](./llms.txt). Ask: *"Add a 3D model viewer to my Compose screen."* Per-client
+snippets are in [Use with AI](#use-with-ai).
 
 ---
 
@@ -332,7 +333,9 @@ The other platforms in the table below join this section once a capture backs th
 | **Desktop (JVM)** | Filament, via filament-kmp | Compose Desktop (`sceneview-compose`) | Alpha |
 | **Flutter** | Native per platform | PlatformView | End of life — [4.68.0 is the last release](DEPRECATION.md) |
 | **React Native** | Native per platform | Fabric | End of life — [4.68.0 is the last release](DEPRECATION.md) |
-| **AI assistants** | — | `llms.txt`, MCP server, skills | Stable |
+| **AI assistants** | — | `npx -y sceneview-mcp`, `AGENTS.md`, `llms.txt` | Stable |
+
+> **Legacy targets note:** SwiftUI (`SceneViewSwift`, Apple demo frozen at `4.69.7`), Flutter (`flutter_sceneview`), and React Native (`@sceneview-sdk/react-native`) reached end of life at **`4.68.0`** (November 2026); published versions remain installable — see [DEPRECATION.md](DEPRECATION.md).
 
 ## Install
 
@@ -355,59 +358,61 @@ To check for a newer release, look at [Maven Central](https://central.sonatype.c
 
 ## Use with AI
 
-Everything an assistant needs to write SceneView code ships with the SDK:
+SceneView ships tool-agnostic, open-standard context so **any** coding assistant writes working
+3D & AR code on the first try — whether you use **Gemini / Antigravity**, **Cursor**, **GitHub Copilot**,
+**Codex**, or **Claude Code**:
 
-- **[`llms.txt`](./llms.txt)** — the complete API reference in one file: composables, every node
-  type, threading rules, recipes. Its Kotlin snippets are compiled in CI. Served at
-  `https://sceneview.github.io/llms.txt` for tools without MCP support.
-- **Rules files** — `AGENTS.md` (Codex, Cursor, GitHub Copilot, Gemini in Android Studio and
-  others), `CLAUDE.md` (Claude Code), `.github/copilot-instructions.md`, and `.cursorrules` for
-  older Cursor versions.
-- **The [MCP server](./mcp/)** — free, no API key. The tools assistants reach for most:
-  `validate_code` (checks a snippet for known pitfalls and unknown symbols before you run it; it does not check argument names),
-  `get_node_reference` (the exact node signature, not an invented one), `list_samples` /
-  `get_sample` (38 samples to start from), and `get_setup` / `get_ar_setup` (project wiring).
+- **[The MCP server](./mcp/)** (`npx -y sceneview-mcp`) — free, no API key. Key tools:
+  `validate_code` (checks a snippet for known pitfalls and unknown symbols before you run it),
+  `get_node_reference` (exact node signatures), `list_samples` / `get_sample` (38 samples), and
+  `get_setup` / `get_ar_setup` (project wiring).
+- **[`AGENTS.md`](./AGENTS.md)** — standard repository instructions honored across Gemini / Antigravity,
+  Cursor, GitHub Copilot, Codex, Junie, Cline, and others (alongside mirrors `.github/copilot-instructions.md`,
+  `.cursorrules`, and `CLAUDE.md`).
+- **[`llms.txt`](./llms.txt)** — complete single-file API reference (composables, node types,
+  threading rules, recipes) whose Kotlin snippets are compiled in CI. Hosted at
+  `https://sceneview.github.io/llms.txt` for environments without MCP support.
 
 ### MCP setup
 
-```bash
-claude mcp add sceneview -- npx -y sceneview-mcp   # Claude Code
-codex  mcp add sceneview -- npx -y sceneview-mcp   # Codex
-copilot mcp add sceneview -- npx -y sceneview-mcp  # GitHub Copilot CLI
-```
+Start the standard stdio server with `npx -y sceneview-mcp`, or connect any client below:
+
 ```json
+// Gemini CLI (~/.gemini/settings.json), Google Antigravity (mcp_config.json),
 // Cursor (.cursor/mcp.json), Cline, JetBrains AI Assistant
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
-// VS Code (.vscode/mcp.json) uses the "servers" key instead
+
+// GitHub Copilot in VS Code (.vscode/mcp.json)
 { "servers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
 
-Clients that only speak HTTP (Gemini in Android Studio, ChatGPT) use the hosted endpoint
-`https://mcp.sceneview.dev/mcp`, or run their own with `npx sceneview-mcp --http`. Per-client
-snippets: [sceneview.github.io/#ai-setup](https://sceneview.github.io/#ai-setup). Listed on the
-[MCP Registry](https://registry.modelcontextprotocol.io).
-
-### ChatGPT / Codex plugin
-
-This repository is also an OpenAI plugin: `.codex-plugin/plugin.json` points at the three
-skills under [`agents/`](agents/) (`sceneview`, `sceneview-ios`, `sceneview-web`). From a
-checkout:
-
 ```bash
-codex plugin marketplace add "$PWD"    # absolute path — a relative one does not resolve
-codex plugin add sceneview@sceneview-local
+copilot mcp add sceneview -- npx -y sceneview-mcp   # GitHub Copilot CLI
+codex   mcp add sceneview -- npx -y sceneview-mcp   # Codex
+claude  mcp add sceneview -- npx -y sceneview-mcp   # Claude Code
 ```
 
-Codex also discovers the skills from `.agents/skills/` on its own. Over HTTP the MCP server
-carries an inline `view_3d_model` widget that renders a public GLB/glTF URL in the
-conversation. Listing copy and test prompts: [agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md).
+HTTP-only clients (such as Gemini in Android Studio or web assistants) can connect to the hosted
+endpoint `https://mcp.sceneview.dev/mcp` or run locally with `npx sceneview-mcp --http`.
+All client configurations: [sceneview.github.io/#ai-setup](https://sceneview.github.io/#ai-setup) ·
+[MCP Registry](https://registry.modelcontextprotocol.io).
 
-### Claude Code plugin
+### Agent skills & plugins
 
-`/plugin marketplace add sceneview/claude-marketplace`, then `/plugin install sceneview@sceneview`,
-installs the same three skills as the Codex plugin together with the MCP server. The commands used
-to work on this repository are a separate plugin, `sceneview-contrib@sceneview` — see
-[sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace).
+The reusable SceneView skills under [`agents/`](agents/) (`sceneview`, `sceneview-ios`,
+`sceneview-web`) work across standard skill-compatible clients via `.agents/skills/` as well as
+native marketplace plugins:
+
+- **Codex / ChatGPT plugin** (`.codex-plugin/plugin.json`):
+  ```bash
+  codex plugin marketplace add "$PWD"    # absolute path — a relative one does not resolve
+  codex plugin add sceneview@sceneview-local
+  ```
+  Over HTTP the MCP server also exposes an inline `view_3d_model` widget for public GLB/glTF URLs
+  ([agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md)).
+- **Claude Code plugin**: `/plugin marketplace add sceneview/claude-marketplace`, then
+  `/plugin install sceneview@sceneview` (maintainer workflow plugin: `sceneview-contrib@sceneview`
+  in [sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace)).
 
 Vertical MCP servers (Rerun AR debugging and others) are listed in the [MCP README](./mcp/README.md).
 
@@ -701,11 +706,12 @@ Confirmed by the team (November 25, 2026):
 
 ## Built with SceneView
 
-- **[3D AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
-  open a 3D file from any app or link (GLB, glTF, STL, OBJ, PLY, 3MF) and see it in your room at
-  real size.
-- **[Will It Fit](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit)** —
-  enter a piece of furniture's dimensions and see whether it fits before you buy.
+- **[Living AR Dragon Showcase](https://thomasgorisse.github.io/arcamera/dragon/)** —
+  3D dragon anchored at true 1:1 scale on a real floor with ARCore + Filament, then animated in-scene.
+- **[3D AR Viewer](https://thomasgorisse.github.io/arcamera/)** ([Google Play](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with) · [App Store](https://apps.apple.com/us/app/3d-ar-viewer-ai-model-maker/id6790808866)) —
+  open a 3D file from any app or link (GLB, glTF, STL, OBJ, PLY, 3MF) or turn a photo into a 3D model and see it in your room at real size.
+- **[Will It Fit](https://thomasgorisse.github.io/willitfit/)** ([Google Play](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)) —
+  check real-3D clearance and furniture fit in AR before you buy.
 
 ---
 
