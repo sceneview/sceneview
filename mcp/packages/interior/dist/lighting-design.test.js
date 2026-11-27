@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateLightingDesign, LIGHT_TYPES, COLOR_TEMPERATURES, } from "./lighting-design.js";
 describe("LIGHT_TYPES", () => {
@@ -159,7 +160,7 @@ describe("generateLightingDesign", () => {
             expect(Math.abs(z)).toBeLessThan(1);
         }
         expect(code).toContain("import io.github.sceneview.model.restPoseBoundingBox");
-        expect(code).toContain('implementation("io.github.sceneview:sceneview:4.69.4")');
+        expect(code).toContain(`implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`);
     });
     it("places every AR fixture under the tapped horizontal plane's anchor", () => {
         const code = generateLightingDesign({ lights: LIGHT_TYPES, ar: true });

@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import {
   generateLevelEditor,
@@ -111,7 +112,7 @@ describe("generateLevelEditor", () => {
     const code = generateLevelEditor({ theme: "dungeon", ar: true });
     expect(code).toContain("ARSceneView(");
     expect(code).toContain("android.permission.CAMERA");
-    expect(code).toContain("arsceneview:4.53.0");
+    expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
   });
 
   it("includes LightNode with its type and named apply parameter", () => {

@@ -1,4 +1,4 @@
-// ─── AR furniture placement code generator ────────────────────────────────────
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 export const FURNITURE_CATEGORIES = [
     "sofa", "chair", "table", "bed", "desk", "shelf",
     "wardrobe", "cabinet", "lamp", "rug", "plant", "mirror",
@@ -31,10 +31,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -56,7 +56,7 @@ import io.github.sceneview.math.Rotation
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -67,7 +67,7 @@ fun ${composableName}() {
 
     val modelInstance = rememberModelInstance(modelLoader, "${model}")
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 ${rotatable ? `    var rotationY by remember { mutableFloatStateOf(0f) }` : ""}
 ${scalable ? `    var scaleFactor by remember { mutableFloatStateOf(${scale}f) }` : ""}
 
@@ -87,19 +87,22 @@ ${scalable ? `    var scaleFactor by remember { mutableFloatStateOf(${scale}f) }
                     onSingleTapConfirmed = { e, _ ->
                         // Hit-test the tap against the latest ARCore frame
                         latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                            if (!placed && modelInstance != null) {
-                                val anchor = hitResult.createAnchor()
-                                placed = true
+                            if (anchor == null && modelInstance != null) {
+                                anchor = hitResult.createAnchorOrNull()
                             }
                         }
                     }
                 )
             ) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = ${scale}f${scalable ? " * scaleFactor" : ""}
-                    )
+                anchor?.let { placedAnchor ->
+                    AnchorNode(anchor = placedAnchor) {
+                        modelInstance?.let { instance ->
+                            ModelNode(
+                                modelInstance = instance,
+                                scaleToUnits = ${scale}f${scalable ? " * scaleFactor" : ""}
+                            )
+                        }
+                    }
                 }
             }
 
@@ -111,7 +114,7 @@ ${scalable ? `    var scaleFactor by remember { mutableFloatStateOf(${scale}f) }
             }
 
             // Placement instruction
-            if (!placed && modelInstance != null) {
+            if (anchor == null && modelInstance != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shape = MaterialTheme.shapes.medium,
@@ -129,7 +132,7 @@ ${scalable ? `    var scaleFactor by remember { mutableFloatStateOf(${scale}f) }
         }
 
         // ── Controls ──────────────────────────────────────────────────────
-        if (placed) {
+        if (anchor != null) {
             FurnitureControls(
 ${rotatable ? `                rotationY = rotationY,
                 onRotationChange = { rotationY = it },` : ""}
@@ -179,12 +182,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.node.LightNode
 
 /**
  * 3D Furniture Preview — ${options.category} (${options.size ?? "medium"}).
@@ -192,7 +193,7 @@ import io.github.sceneview.node.LightNode
  * Preview a ${options.category} in 3D with orbit controls before placing in AR.
  * Model: src/main/assets/${model}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}Preview() {

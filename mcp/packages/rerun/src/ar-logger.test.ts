@@ -22,13 +22,13 @@ describe("LOGGER_DATA_TYPES", () => {
 });
 
 describe("generateArLogger — kotlin", () => {
-  it("emits a composable that uses ARScene + rememberRerunBridge", () => {
+  it("emits a composable that uses ARSceneView + rememberRerunBridge", () => {
     const code = generateArLogger({
       language: "kotlin",
       dataTypes: ["pose", "planes"],
     });
     expect(code).toContain("@Composable");
-    expect(code).toContain("io.github.sceneview.ar.ARScene");
+    expect(code).toContain("io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("io.github.sceneview.ar.rerun.rememberRerunBridge");
     expect(code).toContain("onSessionUpdated");
   });

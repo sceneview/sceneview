@@ -1,4 +1,4 @@
-// ─── Room tour (animated camera walkthrough) code generator ───────────────────
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 export const TOUR_STYLES = [
     "orbit", "walkthrough", "flyover", "dolly", "panoramic",
 ];
@@ -31,12 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import kotlin.math.cos
 import kotlin.math.sin
@@ -50,7 +48,7 @@ import kotlin.math.sin
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -211,14 +209,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.node.LightNode
 
 /**
  * AR Room Tour — ${tourStyle} style.
@@ -233,7 +231,7 @@ import io.github.sceneview.node.LightNode
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -244,7 +242,7 @@ fun ${composableName}AR() {
 
     val modelInstance = rememberModelInstance(modelLoader, "${roomModel}")
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -257,23 +255,26 @@ fun ${composableName}AR() {
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
                     latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed && modelInstance != null) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
+                        if (anchor == null && modelInstance != null) {
+                            anchor = hitResult.createAnchorOrNull()
                         }
                     }
                 }
             )
         ) {
-            modelInstance?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.3f // Miniature for tabletop viewing
-                )
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    modelInstance?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = 0.3f // Miniature for tabletop viewing
+                        )
+                    }
+                }
             }
         }
 
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,

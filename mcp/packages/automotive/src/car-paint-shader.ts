@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Car paint shader (Filament .mat) generator ──────────────────────────────
 
 export type PaintFinish =
@@ -114,7 +116,6 @@ ${hasFlakes ? `
 import androidx.compose.runtime.*
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
@@ -182,7 +183,7 @@ fun PaintedCarScene(modelAsset: String = "models/cars/sports_car.glb") {
     `. Base color ${baseColorHex}, metallic ${effectiveMetallic}, roughness ${effectiveRoughness}, clearcoat ${effectiveClearcoat}.`;
 
   const dependencies = [
-    "io.github.sceneview:sceneview:4.53.0",
+    `io.github.sceneview:sceneview:${SCENEVIEW_VERSION}`,
     "matc from the exact Filament version your SceneView release ships (see gradle/libs.versions.toml, `filament`) to build the .mat into .filamat — a blob from another version fails to load",
   ];
 

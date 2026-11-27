@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Character viewer code generator ──────────────────────────────────────────
 
 export type CharacterStyle =
@@ -82,12 +84,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 
@@ -236,10 +236,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -260,7 +260,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -271,7 +271,7 @@ fun ${composableName}AR() {
 
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
     var currentAnimation by remember { mutableStateOf("${animations[0]}") }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -285,24 +285,27 @@ fun ${composableName}AR() {
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
                     latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed && modelInstance != null) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
+                        if (anchor == null && modelInstance != null) {
+                            anchor = hitResult.createAnchorOrNull()
                         }
                     }
                 }
             )
         ) {
-            modelInstance?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.5f
-                )
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    modelInstance?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = 0.5f
+                        )
+                    }
+                }
             }
         }
 
         // Placement instruction
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,
@@ -319,7 +322,7 @@ fun ${composableName}AR() {
         }
 
         // Animation selector
-        if (placed) {
+        if (anchor != null) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier

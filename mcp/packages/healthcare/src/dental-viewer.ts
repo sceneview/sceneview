@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Dental 3D scanning visualization code generator ─────────────────────────
 
 export type DentalViewType =
@@ -70,12 +72,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.node.LightNode
 
 /**
  * Dental ${viewType.replace("-", " ")} 3D viewer — ${arch} arch.
@@ -354,10 +354,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -377,7 +377,7 @@ import io.github.sceneview.rememberModelInstance
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -391,7 +391,7 @@ fun ${composableName}AR() {
         "models/dental/${viewType}_${arch}.glb"
     )
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -404,23 +404,26 @@ fun ${composableName}AR() {
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
                     latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed && dentalModel != null) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
+                        if (anchor == null && dentalModel != null) {
+                            anchor = hitResult.createAnchorOrNull()
                         }
                     }
                 }
             )
         ) {
-            dentalModel?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.15f // Life-size dental arch ~15cm
-                )
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    dentalModel?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = 0.15f // Life-size dental arch ~15cm
+                        )
+                    }
+                }
             }
         }
 
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,

@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Material switcher code generator ─────────────────────────────────────────
 
 export type MaterialSurface =
@@ -84,13 +86,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.node.LightNode
 
 /**
  * 3D Material Switcher — ${surface} with ${finish} finish.
@@ -102,7 +102,7 @@ import io.github.sceneview.node.LightNode
  *
  * Model: src/main/assets/${modelPath}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -253,9 +253,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -273,7 +274,7 @@ import io.github.sceneview.rememberModelInstance
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -286,6 +287,7 @@ fun ${composableName}AR() {
 
     val colors = listOf(${colors.map((c) => `"${c}"`).join(", ")})
     var selectedColorIndex by remember { mutableIntStateOf(0) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -302,17 +304,21 @@ fun ${composableName}AR() {
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { e, _ ->
                         // Hit-test the tap against the latest ARCore frame
-                        latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                            // Apply selected material to tapped surface
+                        if (anchor == null) {
+                            anchor = latestFrame?.hitTest(e)?.firstOrNull()?.createAnchorOrNull()
                         }
                     }
                 )
             ) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 1.0f
-                    )
+                anchor?.let { placedAnchor ->
+                    AnchorNode(anchor = placedAnchor) {
+                        modelInstance?.let { instance ->
+                            ModelNode(
+                                modelInstance = instance,
+                                scaleToUnits = 1.0f
+                            )
+                        }
+                    }
                 }
             }
 

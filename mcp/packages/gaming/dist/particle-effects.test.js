@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateParticleEffects, getEffectConfig, PARTICLE_EFFECTS, BLEND_MODES, } from "./particle-effects.js";
 describe("PARTICLE_EFFECTS", () => {
@@ -85,12 +86,14 @@ describe("generateParticleEffects", () => {
         const code = generateParticleEffects({ effect: "fire", ar: true });
         expect(code).toContain("ARSceneView(");
         expect(code).toContain("android.permission.CAMERA");
-        expect(code).toContain("arsceneview:4.16.9");
+        expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateParticleEffects({ effect: "fire" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("handles loop=true with respawn", () => {

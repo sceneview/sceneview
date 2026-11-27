@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Room planner code generator ──────────────────────────────────────────────
 
 export type RoomType =
@@ -86,16 +88,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
-import io.github.sceneview.node.CubeNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 
 /**
  * 3D Room Planner — ${roomType} (${widthMeters}m x ${lengthMeters}m x ${heightMeters}m).
@@ -106,7 +105,7 @@ import io.github.sceneview.math.Scale
  * Uses SceneView's geometry nodes for walls/floor and ModelNode for furniture.
  * Orbit camera with pinch-to-zoom for interior exploration.
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -143,8 +142,7 @@ fun ${composableName}() {
                 // ── Floor ─────────────────────────────────────────────────
                 if (showFloor) {
                     CubeNode(
-                        engine = engine,
-                        size = Scale(width, 0.02f, length),
+                        size = Size(width, 0.02f, length),
                         center = Position(0f, -0.01f, 0f)
                     )
                 }
@@ -153,20 +151,17 @@ fun ${composableName}() {
                 if (showWalls) {
                     // Back wall
                     CubeNode(
-                        engine = engine,
-                        size = Scale(width, height, 0.1f),
+                        size = Size(width, height, 0.1f),
                         center = Position(0f, height / 2f, -length / 2f)
                     )
                     // Left wall
                     CubeNode(
-                        engine = engine,
-                        size = Scale(0.1f, height, length),
+                        size = Size(0.1f, height, length),
                         center = Position(-width / 2f, height / 2f, 0f)
                     )
                     // Right wall
                     CubeNode(
-                        engine = engine,
-                        size = Scale(0.1f, height, length),
+                        size = Size(0.1f, height, length),
                         center = Position(width / 2f, height / 2f, 0f)
                     )
                 }
@@ -174,8 +169,7 @@ fun ${composableName}() {
                 // ── Ceiling ───────────────────────────────────────────────
                 if (showCeiling) {
                     CubeNode(
-                        engine = engine,
-                        size = Scale(width, 0.02f, length),
+                        size = Size(width, 0.02f, length),
                         center = Position(0f, height, 0f)
                     )
                 }
@@ -304,15 +298,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.node.CubeNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 
 /**
  * AR Room Planner — ${roomType} (${widthMeters}m x ${lengthMeters}m x ${heightMeters}m).
@@ -327,7 +321,7 @@ import io.github.sceneview.math.Scale
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -341,7 +335,7 @@ fun ${composableName}AR() {
     val length = ${lengthMeters}f * scale
     val height = ${heightMeters}f * scale
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -354,40 +348,39 @@ fun ${composableName}AR() {
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
                     latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
+                        if (anchor == null) {
+                            anchor = hitResult.createAnchorOrNull()
                         }
                     }
                 }
             )
         ) {
-            // Floor
-            CubeNode(
-                engine = engine,
-                size = Scale(width, 0.002f, length),
-                center = Position(0f, 0f, 0f)
-            )
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    // Floor
+                    CubeNode(
+                        size = Size(width, 0.002f, length),
+                        center = Position(0f, 0f, 0f)
+                    )
 
-            // Walls at 1:10 scale
-            CubeNode(
-                engine = engine,
-                size = Scale(width, height, 0.01f),
-                center = Position(0f, height / 2f, -length / 2f)
-            )
-            CubeNode(
-                engine = engine,
-                size = Scale(0.01f, height, length),
-                center = Position(-width / 2f, height / 2f, 0f)
-            )
-            CubeNode(
-                engine = engine,
-                size = Scale(0.01f, height, length),
-                center = Position(width / 2f, height / 2f, 0f)
-            )
+                    // Walls at 1:10 scale
+                    CubeNode(
+                        size = Size(width, height, 0.01f),
+                        center = Position(0f, height / 2f, -length / 2f)
+                    )
+                    CubeNode(
+                        size = Size(0.01f, height, length),
+                        center = Position(-width / 2f, height / 2f, 0f)
+                    )
+                    CubeNode(
+                        size = Size(0.01f, height, length),
+                        center = Position(width / 2f, height / 2f, 0f)
+                    )
+                }
+            }
         }
 
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,

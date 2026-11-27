@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generatePhysicsGame, getGravityValue, PHYSICS_PRESETS, GRAVITY_MODES, } from "./physics-game.js";
 describe("PHYSICS_PRESETS", () => {
@@ -89,12 +90,14 @@ describe("generatePhysicsGame", () => {
         const code = generatePhysicsGame({ preset: "bouncing-balls", ar: true });
         expect(code).toContain("ARSceneView(");
         expect(code).toContain("android.permission.CAMERA");
-        expect(code).toContain("arsceneview:4.16.9");
+        expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generatePhysicsGame({ preset: "bouncing-balls" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("includes score tracking", () => {

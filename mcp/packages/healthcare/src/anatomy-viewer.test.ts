@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import {
   generateAnatomyViewer,
@@ -57,7 +58,7 @@ describe("generateAnatomyViewer", () => {
     const code = generateAnatomyViewer({ system: "skeleton", ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
-    expect(code).toContain("arsceneview:4.53.0");
+    expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
     expect(code).toContain("android.permission.CAMERA");
   });
 
