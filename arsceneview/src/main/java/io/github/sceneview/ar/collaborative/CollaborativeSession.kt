@@ -209,11 +209,6 @@ public constructor(
     // replaces it to place two writes at the same instant.
     internal var epochMillis: () -> Long = { System.currentTimeMillis() }
 
-    // Kept across runtime generations so a restart cannot make this peer
-    // emit a counter below a node write it already observed or originated.
-    // Visible collaborative state is still cleared by start().
-    private var nodeClockHighWater = 0L
-
     /**
      * The shared coordinate-frame [CloudAnchorNode], once [host] has succeeded
      * or [resolve] has completed. `null` until then. Parent your collaborative
@@ -574,22 +569,9 @@ public constructor(
         quaternion: FloatArray,
         scale: FloatArray = floatArrayOf(1f, 1f, 1f),
     ) {
-        placeNode(nodeKey, modelKey, translation, quaternion, scale, afterRuntimeCaptured = null)
-    }
-
-    private fun placeNode(
-        nodeKey: String,
-        modelKey: String,
-        translation: FloatArray,
-        quaternion: FloatArray,
-        scale: FloatArray,
-        afterRuntimeCaptured: (() -> Unit)?,
-    ) {
-        val run = runtime ?: return
-        afterRuntimeCaptured?.invoke()
+        if (!started) return
         synchronized(stateLock) {
-            if (runtime !== run) return
-            val logicalClock = nextNodeClock(nodeKey)
+            val logicalClock = state.nextNodeClock(nodeKey, epochMillis())
             // Serialized first: it validates the arrays, so a call it rejects
             // changes nothing on this device either.
             val line = CollaborativeWireFormat.node(
@@ -603,12 +585,11 @@ public constructor(
                 logWarning("placeNode($nodeKey) not applied: the key's counter is exhausted")
                 return
             }
-            nodeClockHighWater = maxOf(nodeClockHighWater, logicalClock)
             publishNodes()
             // Queued under the state lock: two threads writing one key must
             // queue their lines in counter order, or the older line would be
             // the one left in the key's outbox slot.
-            enqueue(run, OUTBOX_NODE_PREFIX + nodeKey, line)
+            enqueue(OUTBOX_NODE_PREFIX + nodeKey, line)
         }
     }
 
@@ -626,27 +607,19 @@ public constructor(
      * @param nodeKey the key the node was placed with.
      */
     public fun removeNode(nodeKey: String) {
-        removeNode(nodeKey, afterRuntimeCaptured = null)
-    }
-
-    private fun removeNode(nodeKey: String, afterRuntimeCaptured: (() -> Unit)?) {
-        val run = runtime ?: return
-        afterRuntimeCaptured?.invoke()
+        if (!started) return
         synchronized(stateLock) {
-            if (runtime !== run) return
             if (!state.isPlaced(nodeKey)) return
-            val logicalClock = nextNodeClock(nodeKey)
+            val logicalClock = state.nextNodeClock(nodeKey, epochMillis())
             val removal = CollaborativeMessage.NodeRemoval(localPeerId, nodeKey, logicalClock)
             if (!state.applyLocal(removal)) {
                 logWarning("removeNode($nodeKey) not applied: the key's counter is exhausted")
                 return
             }
-            nodeClockHighWater = maxOf(nodeClockHighWater, logicalClock)
             publishNodes()
             // Same slot as the key's placements: a removal replaces a
             // placement of that key still waiting to be sent, and the reverse.
             enqueue(
-                run,
                 OUTBOX_NODE_PREFIX + nodeKey,
                 CollaborativeWireFormat.remove(localPeerId, nodeKey, logicalClock),
             )
@@ -687,32 +660,11 @@ public constructor(
         }
         synchronized(stateLock) {
             if (runtime !== run) return
-            val changed = state.applyRemote(message, epochMillis())
-            preserveNodeClock(message)
-            if (!changed) return
+            if (!state.applyRemote(message, epochMillis())) return
             publishParticipants()
             publishNodes()
             state.sharedAnchor?.let { _sharedCloudAnchorId = it.cloudAnchorId }
         }
-    }
-
-    private fun nextNodeClock(nodeKey: String): Long {
-        val aboveHighWater =
-            if (nodeClockHighWater == Long.MAX_VALUE) Long.MAX_VALUE else nodeClockHighWater + 1L
-        return maxOf(state.nextNodeClock(nodeKey, epochMillis()), aboveHighWater)
-    }
-
-    private fun preserveNodeClock(message: CollaborativeMessage) {
-        val nodeKey = when (message) {
-            is CollaborativeMessage.NodeState -> message.nodeKey
-            is CollaborativeMessage.NodeRemoval -> message.nodeKey
-            else -> return
-        }
-        // Reading the state's next counter distinguishes a stored version
-        // from a rejected hostile one without duplicating its acceptance rule.
-        val next = state.nextNodeClock(nodeKey)
-        val observed = if (next == Long.MAX_VALUE) next else next - 1L
-        nodeClockHighWater = maxOf(nodeClockHighWater, observed)
     }
 
     private fun publishParticipants() {
@@ -823,29 +775,6 @@ public constructor(
         afterRuntimeCaptured: () -> Unit,
     ) {
         broadcastLocalPose(translation, quaternion, afterRuntimeCaptured)
-    }
-
-    /** Pauses a placement after it captures its runtime generation. */
-    internal fun testOnlyPlaceNode(
-        nodeKey: String,
-        modelKey: String,
-        translation: FloatArray,
-        quaternion: FloatArray,
-        afterRuntimeCaptured: () -> Unit,
-    ) {
-        placeNode(
-            nodeKey,
-            modelKey,
-            translation,
-            quaternion,
-            floatArrayOf(1f, 1f, 1f),
-            afterRuntimeCaptured,
-        )
-    }
-
-    /** Pauses a removal after it captures its runtime generation. */
-    internal fun testOnlyRemoveNode(nodeKey: String, afterRuntimeCaptured: () -> Unit) {
-        removeNode(nodeKey, afterRuntimeCaptured)
     }
 
     /** The internal anchor record shared by successful host and resolve callbacks. */
