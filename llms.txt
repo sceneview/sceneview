@@ -1371,6 +1371,9 @@ of its parent. There is no `rotation` parameter. See "Facing the camera" below.
 ```
 Reactive: `position`, `scale` and `cameraPositionProvider` update on recomposition; a new `bitmap`
 rebuilds the node. Without a `cameraPositionProvider` it is a plain image quad that keeps its parent's orientation.
+Sizing preserves the bitmap aspect ratio when only one dimension is supplied: `widthMeters` alone
+derives the height, and `heightMeters` alone derives the width. Supplying both uses both exact
+dimensions; supplying neither keeps the `ImageNode` default, with the longer edge normalised to 1 unit.
 
 #### Facing the camera — `cameraPositionProvider` on `BillboardNode`, `TextNode` and `ViewNode`
 One parameter, one meaning on the three: `cameraPositionProvider: (() -> Position)? = null`.
