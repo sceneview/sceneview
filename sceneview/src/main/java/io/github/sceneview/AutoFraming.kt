@@ -63,6 +63,26 @@ internal data class AutoFraming(
     val animationEnvelope: AnimationEnvelope?,
 )
 
+internal data class AutoFramingPlayback(
+    val modelIdentity: Any,
+    val clips: List<Int>,
+)
+
+/** Cheap, stable invalidation key; unlike [resolveAutoFraming], this never samples clip poses. */
+internal fun autoFramingPlaybackSignature(contentRoots: List<Node>): List<AutoFramingPlayback> {
+    val playback = mutableListOf<AutoFramingPlayback>()
+
+    fun visit(node: Node) {
+        if (!node.isVisible) return
+        if (node is ModelNode) {
+            playback += AutoFramingPlayback(node, node.playingAnimations.keys.toList())
+        }
+        node.childNodes.forEach(::visit)
+    }
+    contentRoots.forEach(::visit)
+    return playback
+}
+
 /** Main-thread walk: model metadata, renderable AABBs and world transforms reach Filament JNI. */
 internal fun resolveAutoFraming(
     contentRoots: List<Node>,

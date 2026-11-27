@@ -634,7 +634,22 @@ class SceneAutoFitState {
         padding: Float = DEFAULT_FRAMING_PADDING,
         fitMode: FitMode? = null,
         animationEnvelope: AnimationEnvelope? = null
-    ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding, fitMode, animationEnvelope)
+    ): Boolean = maybeFit(
+        cameraNode, listOf(contentRoot), padding, fitMode, animationEnvelope,
+        tracksAutomaticCenter = false
+    )
+
+    /** Auto-centred SceneView path: re-arms while its intermediate content root is moving. */
+    internal fun maybeFitAutoCentered(
+        cameraNode: CameraNode,
+        contentRoot: Node,
+        padding: Float = DEFAULT_FRAMING_PADDING,
+        fitMode: FitMode? = null,
+        animationEnvelope: AnimationEnvelope? = null
+    ): Boolean = maybeFit(
+        cameraNode, listOf(contentRoot), padding, fitMode, animationEnvelope,
+        tracksAutomaticCenter = true
+    )
 
     /**
      * Runs the auto-fit pass against the union bounds of every node in [contentRoots]. Used when
@@ -652,6 +667,18 @@ class SceneAutoFitState {
         padding: Float = DEFAULT_FRAMING_PADDING,
         fitMode: FitMode? = null,
         animationEnvelope: AnimationEnvelope? = null
+    ): Boolean = maybeFit(
+        cameraNode, contentRoots, padding, fitMode, animationEnvelope,
+        tracksAutomaticCenter = false
+    )
+
+    private fun maybeFit(
+        cameraNode: CameraNode,
+        contentRoots: List<Node>,
+        padding: Float,
+        fitMode: FitMode?,
+        animationEnvelope: AnimationEnvelope?,
+        tracksAutomaticCenter: Boolean,
     ): Boolean {
         // No content to frame yet. See [FramingGate.isPending]: this is a wait on a push source
         // (the DSL node sync invalidates and resets the gate when content arrives), never a reason
@@ -668,16 +695,19 @@ class SceneAutoFitState {
         val framingKey = if (cameraNode.clipToContentPadding) {
             cameraNode.contentPadding to cameraNode.getViewPortAspect()
         } else cameraNode.contentPadding
-        // An automatically computed envelope follows the content in world space. Auto-centering
-        // can move that content while leaving the envelope diagonal unchanged, so include those
-        // positions in the latch key until they settle. Explicit envelopes remain caller-owned.
-        val automaticContentPositions = if (fitMode == null && animationEnvelope == null) {
-            contentRoots.map { it.worldPosition }
+        // An automatically computed envelope follows auto-centred content in world space. Include
+        // only that intermediate root's position: arbitrary animation or gesture movement with
+        // auto-centering disabled must remain a one-shot fit.
+        // Playback changes can select another envelope or force the concurrent-clip corner path.
+        // This walk reads only stable node/map state; pose sampling stays below the gate.
+        val playback = if (fitMode == null) {
+            autoFramingPlaybackSignature(contentRoots)
         } else {
-            null
+            emptyList()
         }
-        val autoFitKey = AutoFitFramingKey(
-            framingKey, fitMode, animationEnvelope, automaticContentPositions
+        val autoFitKey = autoFitFramingKey(
+            framingKey, fitMode, animationEnvelope, tracksAutomaticCenter,
+            contentRoots.first().worldPosition, playback
         )
         if (gate.rearmOnChange(autoFitKey)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
@@ -765,5 +795,23 @@ internal data class AutoFitFramingKey(
     val viewport: Any,
     val fitMode: FitMode?,
     val animationEnvelope: AnimationEnvelope?,
-    val automaticContentPositions: List<Position>?,
+    val automaticCenterPosition: Position?,
+    val playback: List<AutoFramingPlayback>,
+)
+
+internal fun autoFitFramingKey(
+    viewport: Any,
+    fitMode: FitMode?,
+    animationEnvelope: AnimationEnvelope?,
+    tracksAutomaticCenter: Boolean,
+    contentPosition: Position,
+    playback: List<AutoFramingPlayback>,
+) = AutoFitFramingKey(
+    viewport = viewport,
+    fitMode = fitMode,
+    animationEnvelope = animationEnvelope,
+    automaticCenterPosition = contentPosition.takeIf {
+        tracksAutomaticCenter && fitMode == null && animationEnvelope == null
+    },
+    playback = playback,
 )

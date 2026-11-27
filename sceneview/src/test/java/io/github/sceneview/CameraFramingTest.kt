@@ -23,13 +23,13 @@ class CameraFramingTest {
     @Test
     fun automaticEnvelopeRearmsWhenAutoCenterMovesContent() {
         val gate = FramingGate()
-        val first = AutoFitFramingKey("viewport", null, null, listOf(Position()))
+        val first = AutoFitFramingKey("viewport", null, null, Position(), emptyList())
         gate.rearmOnChange(first)
         gate.recordFraming(2f)
         gate.recordFraming(2f)
         assertTrue("the initial fit should have latched", gate.latched)
 
-        val centered = first.copy(automaticContentPositions = listOf(Position(0f, 1f, 0f)))
+        val centered = first.copy(automaticCenterPosition = Position(0f, 1f, 0f))
         assertTrue(
             "a world-space auto-center move must re-arm an otherwise stable envelope",
             gate.rearmOnChange(centered),

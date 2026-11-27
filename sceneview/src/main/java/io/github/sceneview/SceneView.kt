@@ -1330,7 +1330,7 @@ fun SceneView(
                             !centreGliding
                         ) {
                             if (currentAutoCenterContent.value) {
-                                autoFitState.maybeFit(
+                                autoFitState.maybeFitAutoCentered(
                                     cameraNode, contentRoot, padding = currentFramingPadding.value,
                                     fitMode = currentFitMode.value,
                                     animationEnvelope = currentAnimationEnvelope.value
