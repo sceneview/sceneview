@@ -67,6 +67,20 @@ class DemoClosedSessionARDepthOfFieldTest {
 }
 
 class DemoClosedSessionARSurfacesTest {
+    @Test fun `reset removes the sofa placement and contact node but keeps the frame for the next tap`() {
+        val state = SurfaceSessionState<SessionHandle, SessionHandle, SessionHandle>()
+        val frame = SessionHandle()
+        state.latestFrame = frame
+        state.placedAnchor = SessionHandle()
+        state.anchorNode = SessionHandle()
+
+        state.resetPlacement()
+
+        assertNull(state.placedAnchor)
+        assertNull(state.anchorNode)
+        assertSame(frame, state.latestFrame)
+    }
+
     @Test fun `fatal close drops sofa and frame but resume failure preserves both`() {
         assertSessionLifecycle(SurfaceSessionState<SessionHandle, SessionHandle, SessionHandle>(),
             { latestFrame = it; anchorNode = it; placedAnchor = it },

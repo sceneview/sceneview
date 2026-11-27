@@ -153,8 +153,7 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 onClick = {
                     // Leaving the composition destroys the node, which detaches whichever
                     // anchor it holds by now.
-                    placedAnchor = null
-                    sessionState.anchorNode = null
+                    sessionState.resetPlacement()
                     showcase = showcase.onRemoved()
                 },
                 enabled = showcase.removeEnabled,
@@ -264,6 +263,8 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                 ),
             ) {
                 placedAnchor?.let { anchor ->
+                    // The sofa's longest bounding-box dimension is its width at catalogue scale.
+                    val widthMetres = sofa.realSizeMetres
                     AnchorNode(
                         anchor = anchor,
                         apply = {
@@ -282,10 +283,16 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
                             PivotedModelNode(
                                 modelInstance = it,
                                 assetRotation = Rotation(),
-                                scaleToUnits = sofa.realSizeMetres,
+                                scaleToUnits = widthMetres,
                                 groundBase = true,
                             )
                         }
+                    }
+                    if (widthMetres != null) {
+                        GroundContact(
+                            center = { sessionState.anchorNode?.takeUnless { it.isDestroyed }?.worldPosition },
+                            radius = widthMetres / 2f,
+                        )
                     }
                 }
             }

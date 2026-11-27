@@ -45,10 +45,14 @@ internal class SurfaceSessionState<F, N, A> : DemoSessionState() {
     var latestFrame: F? = null
     var anchorNode: N? = null
     var placedAnchor by mutableStateOf<A?>(null)
-    override fun clear() {
-        latestFrame = null
+    fun resetPlacement() {
         anchorNode = null
         placedAnchor = null
+    }
+
+    override fun clear() {
+        latestFrame = null
+        resetPlacement()
     }
 }
 
