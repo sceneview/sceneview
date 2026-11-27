@@ -16,6 +16,28 @@ import org.junit.Test
  */
 class PlaneRendererLifecycleTest {
 
+    @Test
+    fun `only tracking non subsumed planes are drawable`() {
+        for (state in TrackingState.values()) for (subsumed in listOf(false, true)) {
+            assertEquals(state == TrackingState.TRACKING && !subsumed, isPlaneRenderable(state, subsumed))
+        }
+    }
+
+    @Test
+    fun `paused plane is removed and recreated when tracking resumes`() {
+        val fakes = Fakes()
+        val plane = FakePlane()
+        fakes.gatedUpdate(listOf(plane))
+        plane.trackingState = TrackingState.PAUSED
+        fakes.gatedUpdate(emptyList())
+        assertEquals(0, fakes.registry.size)
+        fakes.assertInstancesMatchVisualizers()
+        plane.trackingState = TrackingState.TRACKING
+        fakes.gatedUpdate(listOf(plane))
+        assertEquals(1, fakes.registry.size)
+        assertEquals(2, fakes.visualizersBuilt)
+    }
+
     // ── 1. Which planes get a visualizer ─────────────────────────────────────────────────
 
     @Test
@@ -56,9 +78,9 @@ class PlaneRendererLifecycleTest {
     }
 
     @Test
-    fun `paused plane with a visualizer keeps updating so it can fade out`() {
+    fun `paused plane is not drawable even with an existing visualizer`() {
         assertEquals(
-            PlaneVisualizerAction.UPDATE,
+            PlaneVisualizerAction.SKIP,
             planeVisualizerAction(TrackingState.PAUSED, isSubsumed = false, hasVisualizer = true),
         )
     }
@@ -100,7 +122,7 @@ class PlaneRendererLifecycleTest {
                 }
             }
             registry.removeIf { plane, _ ->
-                plane.isSubsumed || plane.trackingState == TrackingState.STOPPED
+                !isPlaneRenderable(plane.trackingState, plane.isSubsumed)
             }
         }
 

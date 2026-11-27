@@ -36,6 +36,15 @@ import org.junit.Test
  */
 class PlacementSceneShadowReceiverTest {
 
+    @Test
+    fun `dragging restores planes without stacking shadow receivers and release hides them`() {
+        for (moving in listOf(false, true, false)) {
+            assertTrue(shouldRenderPlaneGrid(true, true, 1, moving) == moving)
+            assertTrue(shouldCatchGroundShadows(true, true, true, 1, moving) == !moving)
+            assertFalse(shouldRenderPlaneGrid(false, true, 1, moving))
+        }
+    }
+
     private val booleans = listOf(false, true)
 
     @Test

@@ -14,6 +14,32 @@ import org.junit.Test
  */
 class PlaneVisualizerTest {
 
+    @Test
+    fun `feather stays inside a polygon that does not contain the plane origin`() {
+        val polygon = FloatBuffer.wrap(floatArrayOf(2f, 3f, 4f, 3f, 2f, 5f))
+        val vertices = FloatBuffer.allocate(18)
+        writeFeatheredPlaneVertices(polygon, vertices, 0.2f, 0.2f)
+        assertEquals(18, vertices.position())
+        for (i in 0 until 6) {
+            val x = vertices[i * 3]
+            val z = vertices[i * 3 + 2]
+            assertTrue(x >= 2f && z >= 3f && x + z <= 7f)
+            assertEquals(if (i < 3) 0f else 1f, vertices[i * 3 + 1], 0f)
+        }
+    }
+
+    @Test
+    fun `placement fades in four tenths of a second and dragging reverses without a jump`() {
+        val anim = PlaneRevealAnimation()
+        anim.advance(0.3f, show = true, focusTarget = 0f)
+        anim.advance(0.2f, show = false, focusTarget = 0f)
+        assertEquals(0.5f, anim.opacity, 1e-6f)
+        anim.advance(0.075f, show = true, focusTarget = 0f)
+        assertEquals(0.75f, anim.opacity, 1e-6f)
+        anim.advance(0.3f, show = false, focusTarget = 0f)
+        assertEquals(0f, anim.opacity, 1e-6f)
+    }
+
     private val frame = 1f / 60f
 
     private fun PlaneRevealAnimation.run(

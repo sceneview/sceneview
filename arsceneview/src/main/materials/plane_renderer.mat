@@ -12,7 +12,7 @@
 //                 1 — wall           : upright dashes on a staggered lattice, pointing up the
 //                                      wall, the way a plumb line hangs;
 //                 2 — ceiling        : hollow rings, quieter.
-//             - Each mark, and the reticle ring, sits in a soft dark halo (`contrast`): a
+//             - Each mark sits in a soft dark halo (`contrast`): a
 //               white dot disappears on a sunlit floor or a white wall, the halo keeps its
 //               outline; on a dark floor the halo is invisible and costs nothing.
 //               The view tone-maps with ToneMapper.Filmic, which flattens everything near
@@ -24,15 +24,15 @@
 //             - A plane is revealed by a soft bright front expanding from its centre, the first
 //               time it appears and again each time ARCore extends it (`scanProgress`,
 //               `scanPlaneRadius`, animated by PlaneVisualizer).
-//             - The focused plane (`focus`, the floor under the centre of the screen) gets a
-//               pool of light, a thin ring and slow ripples where the camera's optical axis
-//               meets it — the reticle is drawn by the surface itself, in perspective, from
-//               the camera matrices alone: no per-frame CPU work, no extra node.
+//             - Focus and reveal modulate brightness only, never mark size. There is no
+//               reticle ring in this material: placed objects must not sit in a dark hoop.
 //             - `opacity` fades the whole plane in and out (placement, hide, disable).
 // Used by:    PlaneRenderer / PlaneVisualizer.
 //
 // Parameters:
 //   uvScale           — float2, marks per metre along the two surface axes.
+//   dotRadius         — float, dot radius in cells (0.009 metres at the default spacing).
+//   patternU/V        — float3, orthonormal surface axes in ARCore world space.
 //   surfaceKind       — float, 0 floor / 1 wall / 2 ceiling (see planeMaterialPresetFor).
 //   gridTint          — float3, mark colour (per plane type, see planeMaterialPresetFor).
 //   gridAlpha         — float, peak opacity of a mark.
@@ -50,6 +50,9 @@ material {
 
     "parameters": [
         { "type": "float2", "name": "uvScale" },
+        { "type": "float", "name": "dotRadius" },
+        { "type": "float3", "name": "patternU" },
+        { "type": "float3", "name": "patternV" },
         { "type": "float", "name": "surfaceKind" },
         { "type": "float3", "name": "gridTint" },
         { "type": "float", "name": "gridAlpha" },
@@ -96,16 +99,10 @@ vertex {
         highp float3 userWorld =
             mulMat4x4Float3(getUserWorldFromWorldMatrix(), material.worldPosition.xyz).xyz;
         float3 normal = normalize(getWorldFromModelMatrix()[1].xyz);
-        // The pattern AXES follow the geometry (a standing surface is laid out across and up,
-        // a lying one along world X/Z); the MARK drawn on them follows `surfaceKind`.
-        highp float2 surface;
-        if (abs(normal.y) < 0.7) {
-            // Along the wall horizontally, and up.
-            float3 across = normalize(cross(float3(0.0, 1.0, 0.0), normal));
-            surface = float2(dot(userWorld, across), userWorld.y);
-        } else {
-            surface = userWorld.xz;
-        }
+        // Orthonormal axes in ARCore world metres, supplied from the plane's normal.
+        // Project the world position, never the moving polygon centre or screen pixels.
+        highp float2 surface = float2(dot(userWorld, materialParams.patternU),
+                                     dot(userWorld, materialParams.patternV));
 
         material.patternUv = float4(surface * materialParams.uvScale, edge, 0.0);
         material.modelPos = float4(pos, 0.0);
@@ -146,14 +143,6 @@ fragment {
         uv.x += wall * 0.5 * mod(floor(uv.y), 2.0);
         float2 cell = fract(uv) - 0.5;
 
-        // Slow ripples running outward from the reticle, on the focused plane only.
-        // The phase is wrapped in highp: `-p mobile` makes a plain `float` mediump, and engine
-        // uptime read into one steps by 0.25 s after 256 s and by 1 s after 1024 s, so the
-        // ripples stuttered and then froze. 2.6179939 s = 2π / 2.4: the wrap is seamless.
-        highp float ripplePhase = getUserTimeMod(2.6179939) * 2.4;
-        float ripple = 0.5 + 0.5 * sin(spotDistance * 9.0 - ripplePhase);
-        float grow = 1.0 + spot * (0.35 + 0.25 * ripple);
-
         // ── Reveal front ─────────────────────────────────────────────────────────────────
         float reveal = 1.0;
         float front = 0.0;
@@ -165,7 +154,6 @@ fragment {
             reveal = 1.0 - smoothstep(frontRadius - 0.30, frontRadius, fromCentre);
             float band = (fromCentre - frontRadius + 0.12) / 0.12;
             front = exp(-band * band) * (1.0 - progress);
-            grow *= 1.0 + front * 0.6;
         }
 
         // ── The mark: signed distance to its outline, in cells (negative inside) ──────────
@@ -173,25 +161,26 @@ fragment {
         float coverage;
         if (wall > 0.5) {
             // Upright dash: a capsule along the wall's up axis.
-            float halfLength = 0.17 * grow;
-            float halfWidth = 0.045 * grow;
+            float halfLength = 0.17;
+            float halfWidth = 0.045;
             float2 p = float2(cell.x, cell.y - clamp(cell.y, -halfLength, halfLength));
             sd = length(p) - halfWidth;
             coverage = 4.0 * halfLength * halfWidth + 3.14159 * halfWidth * halfWidth;
         } else if (ceiling > 0.5) {
             // Hollow ring.
-            float ringRadius = 0.105 * grow;
-            float ringHalfWidth = 0.028 * grow;
+            float ringRadius = 0.105;
+            float ringHalfWidth = 0.028;
             sd = abs(length(cell) - ringRadius) - ringHalfWidth;
             coverage = 4.0 * 3.14159 * ringRadius * ringHalfWidth;
         } else {
             // Round dot.
-            float radius = 0.09 * grow;
+            float radius = materialParams.dotRadius;
             sd = length(cell) - radius;
             coverage = 3.14159 * radius * radius;
         }
 
-        float aa = max(footprint * 0.7, 0.02);
+        // Derivatives soften the edge only; focus and reveal never change physical size.
+        float aa = max(fwidth(sd) * 0.5, 0.002);
         float markMask = 1.0 - smoothstep(-aa, aa, sd);
         // Marks smaller than a pixel become their average coverage instead of shimmering.
         float subPixel = smoothstep(0.30, 0.70, footprint);
@@ -199,13 +188,6 @@ fragment {
         // Dark halo, 10 % of a cell wide and fading outwards; gone once the mark itself is
         // sub-pixel. 5 % was a hairline that white paint in daylight swallowed.
         float rimMask = (1.0 - smoothstep(-aa, 0.10 + aa, sd)) * (1.0 - subPixel);
-
-        // ── Reticle ring, 12 cm around the hit point ─────────────────────────────────────
-        float ringWidth = max(fwidth(spotDistance) * 1.2, 0.004);
-        float ringDistance = abs(spotDistance - 0.12);
-        float ring = (1.0 - smoothstep(0.0, ringWidth, ringDistance)) * focus;
-        // Same halo as the marks: a white ring is lost on a white floor without it.
-        float ringRim = (1.0 - smoothstep(ringWidth, ringWidth * 3.5, ringDistance)) * focus;
 
         // ── Fades ────────────────────────────────────────────────────────────────────────
         float edgeFade = smoothstep(0.0, 1.0, edgeRamp);
@@ -220,18 +202,16 @@ fragment {
             + materialParams.surfaceAlpha * emphasis
             + spot * 0.05;
         light *= fade;
-        light += ring * 0.85 * edgeFade * reveal;
         light = clamp(light * opacity, 0.0, 1.0);
 
         // Shade: what the halo takes away from it, only where the mark is not.
         float contrast = clamp(materialParams.contrast, 0.0, 1.0);
         float shade = rimMask * (1.0 - markMask) * contrast * emphasis * fade * opacity;
-        shade = max(shade, ringRim * contrast * edgeFade * reveal * opacity);
 
         // The pool of light under the reticle only lifts the tint a third of the way to white:
         // more, and a wall lost its colour exactly where the user is looking.
         float3 rgb = mix(materialParams.gridTint, float3(1.0),
-            clamp(spot * 0.35 + front + ring, 0.0, 1.0));
+            clamp(spot * 0.35 + front, 0.0, 1.0));
 
         // Premultiplied: the halo contributes coverage but no colour.
         material.baseColor = float4(rgb * light, clamp(light + shade * (1.0 - light), 0.0, 1.0));

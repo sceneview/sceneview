@@ -915,11 +915,21 @@ specific to Android's ARCore/Filament camera stream.
 | `VERTICAL`                   | wall             | upright blue dashes on staggered rows  |
 | `HORIZONTAL_DOWNWARD_FACING` | ceiling          | hollow warm rings, the quietest        |
 
-Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user; a soft dark halo around every mark (material parameter `contrast`, 0.80 by default) keeps it readable over a white wall or a sunlit floor. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted (it is the reticle); marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and planes subsumed by a larger one are skipped.
+Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user; a soft dark halo around every mark (material parameter `contrast`, 0.80 by default) keeps it readable over a white wall or a sunlit floor. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted by brightness only; marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and only `TRACKING` planes with `subsumedBy == null` are drawn. Invalid planes are removed every frame, including during the visibility fade. Geometry and discovery are refreshed from all session planes at 10 Hz, so an update between polls is not lost.
+
+Marks are spaced 0.10 m apart on orthonormal axes along each surface, including tilted planes; floor dots have a 0.009 m radius. Focus and reveal never change their dimensions. The mesh and its feather stay inside the tracked convex polygon; nearer dots naturally appear larger in perspective. No reticle ring is drawn by the plane material.
+
+`PlacementScene` and `AutoPlacementScene` request `AUTOMATIC` depth and enable the existing
+camera depth-occlusion pass when the configured session supports it. Unsupported devices
+keep the flat camera path. In a custom `ARSceneView`, explicitly request
+`depthMode = Config.DepthMode.AUTOMATIC` and
+`sceneUnderstanding = SceneUnderstanding(occlusion = true)` to enable the same occlusion.
 
 There is no second renderer and no version switch. Since 4.57.0 `planeRendererVersion` is **deprecated and ignored** (both values draw with `PlaneRenderer`): omit it. `PlaneRendererV2` and `PlaneVisualizerV2` are deprecated aliases of `PlaneRenderer` and `PlaneVisualizer`, and `PlaneRendererBase` is deprecated: write the new names. The textured grid is gone: `PlaneRenderer.planeTexture` is a deprecated 1 × 1 placeholder that nothing samples, `MATERIAL_TEXTURE` and `MATERIAL_COLOR` are no longer material parameters (tint with `MATERIAL_GRID_TINT`), and `maxHitTestPerSecond` is now `maxUpdatesPerSecond`.
 
-**After placement — fade the surfaces, keep the object editable.** `planeRenderer = false` fades the surfaces out; plane *detection* keeps running, so an editable `AnchorNode` still drags, twists, pinches and re-anchors exactly as before:
+**After placement — fade the surfaces, keep the object editable.** The placement scenes fade
+planes out over about 0.4 s immediately after placement and restore them while dragging.
+For a custom `ARSceneView`, drive the flag as below. `planeRenderer = false` fades the surfaces out; plane *detection* keeps running, so an editable `AnchorNode` still drags, twists, pinches and re-anchors exactly as before:
 
 ```kotlin
 var anchor by remember { mutableStateOf<Anchor?>(null) }
@@ -1905,9 +1915,9 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
 or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
 centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces show
-while the object looks for one and while it is dragged or turned, and fade 0.8 s after it
-lands (1 s after a gesture ends). The footprint ring shows 1.5 s after landing and while
-selected; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
+while the object looks for one and while it is dragged or turned. They start fading
+immediately on placement or release and disappear in about 0.4 s. The white manipulation
+ring has no black edging and appears only during adjustment; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
 while selected, while moved; always with `state.alwaysShowsDimensions = true`).
 `state.showsPlaneGuide = false` never shows the surfaces (#5209).
 
@@ -2598,14 +2608,12 @@ Shadows require a shadow-casting directional light — `ARSceneView`'s default
 no fill — that is `PlaneNode`, which carries no shadow receiver); declare `PlaneNode` and
 `ShadowReceiverPlane` on the same plane if you want a visible overlay and grounded shadows.
 
-`AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
-them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
-a floor or a table, sized from its bounds (a rounded rectangle on the footprint at 0.4 opacity,
-faded out over 12 cm of real floor beyond its edge at any pinch, or over half the object's larger
-half-extent when it is under about 48 cm: the object hides the inside, so that band is the shadow
-a user sees), turning and scaling with it — it stays under the object when the estimated
-light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
-with `AutoPlacementState.showsContactShadow = false`.
+`AutoPlacementScene` (and, by default, `PlacementScene`) already catch these light-driven
+shadows. The procedural bounds-based pool is **off by default**: bounds do not identify a
+model's actual contact points or the scene's light. An app can opt in with
+`AutoPlacementState.showsContactShadow = true`; it draws a rounded rectangle under floor/table
+placements, never walls. Placement reticles and footprint rings do not remain under a placed
+model; a white manipulation guide can return while it is adjusted.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
 get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact
@@ -3987,7 +3995,9 @@ ARSceneView(onSessionCreated = { arSession = it }) {
 }
 ```
 
-`PlaneNode` exposes `type` (`Plane.Type`), `extentX`, `extentZ`. Demo: `samples/android-demo/.../ARPlaneNodeDemo.kt`.
+`PlaneNode` exposes `type` (`Plane.Type`), `extentX`, `extentZ`. Its visibility also requires
+`subsumedBy == null`, even if ARCore has not changed its tracking state yet; setting
+`isVisible = true` cannot resurrect a subsumed plane. Demo: `samples/android-demo/.../ARPlaneNodeDemo.kt`.
 
 ### `Frame.hasUpdatedTrackable` — did ARCore refine *this* trackable this frame?
 

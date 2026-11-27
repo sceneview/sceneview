@@ -2499,6 +2499,8 @@ public class io/github/sceneview/ar/node/PlaneNode : io/github/sceneview/ar/node
 	public final fun getExtentZ ()F
 	public final fun getPlane ()Lcom/google/ar/core/Plane;
 	public final fun getType ()Lcom/google/ar/core/Plane$Type;
+	public fun isVisible ()Z
+	public fun setVisible (Z)V
 	public fun update (Lcom/google/ar/core/Plane;)V
 	public synthetic fun update (Lcom/google/ar/core/Trackable;)V
 }

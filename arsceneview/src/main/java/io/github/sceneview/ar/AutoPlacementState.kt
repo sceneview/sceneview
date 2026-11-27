@@ -150,7 +150,7 @@ class AutoPlacementState {
 
     /**
      * Draw the selection ring — a thin white footprint ring on the surface around the placed
-     * [AutoPlacementModel] — while [isSelected] (Scene Viewer's selection affordance). On by
+     * [AutoPlacementModel] — while the object is being adjusted. On by
      * default; set `false` to draw your own selection chrome from [isSelected].
      */
     var showsSelectionRing: Boolean by mutableStateOf(true)
@@ -158,11 +158,11 @@ class AutoPlacementState {
     /**
      * Draw a soft contact shadow under the placed [AutoPlacementModel] when it stands on a floor
      * or a table, so it reads as resting on the surface rather than hovering above it — whatever
-     * the estimated light, which may put the real shadow off to one side or nowhere. On by
-     * default; set `false` to keep only the real shadow (`groundShadows`) or draw your own.
+     * the estimated light. Off by default: the bounds-based pool cannot infer actual contact
+     * points (for example chair legs) or lighting. `groundShadows` keeps the light-driven shadow.
      * Never drawn for a wall placement.
      */
-    var showsContactShadow: Boolean by mutableStateOf(true)
+    var showsContactShadow: Boolean by mutableStateOf(false)
 
     /**
      * Draw the detected surfaces while the object looks for one and while it moves, then fade them

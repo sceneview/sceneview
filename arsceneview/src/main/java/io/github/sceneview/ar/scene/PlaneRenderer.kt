@@ -14,7 +14,6 @@ import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.PlaneVisualizer
 import io.github.sceneview.ar.arcore.fps
-import io.github.sceneview.ar.arcore.getUpdatedPlanes
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setParameter
@@ -41,8 +40,7 @@ import kotlin.math.min
  * - **Reveal.** A new surface is revealed by a bright front sweeping out from its centre, and
  *   each extension ARCore makes is revealed the same way.
  * - **Focus.** The floor under the centre of the screen is highlighted: brighter marks, a pool
- *   of light, a thin ring and slow ripples where the camera points — the surface itself is the
- *   reticle.
+ *   of light where the camera points, without changing mark size or drawing a reticle ring.
  * - **Only real surfaces.** A plane smaller than [isPlaneLargeEnough] allows is not drawn until
  *   it grows: ARCore reports many short-lived slivers on bags, door edges and furniture fronts.
  *
@@ -87,7 +85,10 @@ class PlaneRenderer(
     ).apply {
         defaultInstance.apply {
             // Marks per metre along both surface axes: 10 → a mark every 10 cm.
-            setParameter(MATERIAL_UV_SCALE, MARKS_PER_METRE, MARKS_PER_METRE)
+            setParameter(MATERIAL_UV_SCALE, PlanePattern.MARKS_PER_METRE, PlanePattern.MARKS_PER_METRE)
+            setParameter("dotRadius", PlanePattern.DOT_RADIUS_METRES * PlanePattern.MARKS_PER_METRE)
+            setParameter("patternU", 1f, 0f, 0f)
+            setParameter("patternV", 0f, 0f, 1f)
             setParameter(MATERIAL_SURFACE_KIND, PlaneSurfaceKind.FLOOR.shaderValue)
             setParameter(MATERIAL_GRID_TINT, DEFAULT_MARK_TINT)
             setParameter(MATERIAL_GRID_ALPHA, DEFAULT_MARK_ALPHA)
@@ -115,7 +116,7 @@ class PlaneRenderer(
     /**
      * Maximum number of plane updates per second.
      *
-     * Polling ARCore's updated planes, picking the plane under the centre of the screen and
+     * Polling ARCore's tracked planes, picking the plane under the centre of the screen and
      * pushing plane geometry to Filament are gated to this rate. The fade, focus and reveal
      * animations are not: they advance every frame. Lower it to spend less of the frame on
      * planes; raise it to follow ARCore's plane growth more closely.
@@ -164,7 +165,7 @@ class PlaneRenderer(
         set(value) {
             if (field != value) {
                 field = value
-                visualizers.forEach { _, visualizer -> visualizer.setEnabled(value) }
+                visualizers.forEach { _, visualizer -> visualizer.setEnabled(value && isCameraTracking) }
             }
         }
 
@@ -218,19 +219,23 @@ class PlaneRenderer(
     }
 
     /**
-     * Called by `ARSceneView` on every AR frame, on the render thread: refreshes the planes
-     * ARCore updated (at most [maxUpdatesPerSecond] times a second) and advances every plane's
+     * Called by `ARSceneView` on every AR frame, on the main thread: refreshes the planes
+     * ARCore tracks (at most [maxUpdatesPerSecond] times a second) and advances every plane's
      * animations.
      */
     @Suppress("UNUSED_PARAMETER", "UnusedParameter")
     override fun update(session: Session, frame: Frame) {
+        // Tracking and subsumption are validity gates, never animations. Check even while
+        // disabled and between geometry updates so stale planes cannot linger through a fade.
+        isCameraTracking = frame.camera.isTracking
+        cleanupOldPlaneVisualizer()
         if (isEnabled && frame.fps(this.frame) < maxUpdatesPerSecond) {
             this.frame = frame
-            isCameraTracking = frame.camera.isTracking
             try {
-                frame.getUpdatedPlanes().forEach { renderPlane(it) }
+                // Updated-trackables belongs to ONE frame. Throttling that stream loses plane
+                // discoveries and resumptions between polls, especially short wall updates.
+                session.getAllTrackables(Plane::class.java).forEach { renderPlane(it) }
                 refreshFocusAndVisibility(frame)
-                cleanupOldPlaneVisualizer()
             } catch (e: Exception) {
                 android.util.Log.e("SceneView", "PlaneRenderer update error", e)
             }
@@ -308,7 +313,7 @@ class PlaneRenderer(
         // If this plane was subsumed by another plane or it has permanently stopped tracking,
         // remove it — the visualizer and its two MaterialInstances together.
         visualizers.removeIf { plane, _ ->
-            plane.subsumedBy != null || plane.trackingState == TrackingState.STOPPED
+            !isPlaneRenderable(plane.trackingState, plane.subsumedBy != null)
         }
     }
 
@@ -345,7 +350,7 @@ class PlaneRenderer(
 
         /**
          * Float in `[0, 1]`: opacity of the soft dark halo around each mark and around the
-         * reticle ring. The halo is what keeps a white dot readable on a sunlit floor or a
+         * mark. The halo is what keeps a white dot readable on a sunlit floor or a
          * white wall; `0` removes it.
          */
         const val MATERIAL_CONTRAST = "contrast"
@@ -372,9 +377,6 @@ class PlaneRenderer(
          */
         const val MATERIAL_FOCUS = "focus"
 
-        /** One mark every 10 cm — reads as a surface from a metre away, not as noise. */
-        private const val MARKS_PER_METRE = 10.0f
-
         private val DEFAULT_MARK_TINT = Float3(1.0f, 1.0f, 1.0f)
         private const val DEFAULT_MARK_ALPHA = 0.85f
         private const val DEFAULT_SURFACE_ALPHA = 0.015f
@@ -388,12 +390,9 @@ internal enum class PlaneVisualizerAction { SKIP, CREATE, UPDATE }
 /**
  * Decides whether an updated plane gets a new visualizer, a refresh, or nothing.
  *
- * A subsumed plane has been merged into a larger one, which is drawn instead, and a `STOPPED`
- * plane is gone for good: both are skipped, and `cleanupOldPlaneVisualizer` releases a
- * visualizer they may still have. Until this was a function the test read
- * `TRACKING || subsumedBy == null`, which let every subsumed plane through, so each gated update
- * built a visualizer (buffers, entity, two MaterialInstances) that the cleanup destroyed right
- * after. A `PAUSED` plane keeps being updated: `updatePlane` fades it out.
+ * Only actively tracked, non-subsumed planes can create or update a visualizer. Every
+ * frame, even while rendering is disabled, cleanup releases invalid planes immediately.
+ * A resumed plane gets a fresh visualizer on the next geometry poll.
  *
  * [isLargeEnough] only gates the *creation*: a plane that already has a visualizer keeps it
  * when ARCore refines it back under the threshold, so a surface never flickers in and out.
@@ -404,11 +403,15 @@ internal fun planeVisualizerAction(
     hasVisualizer: Boolean,
     isLargeEnough: Boolean = true,
 ): PlaneVisualizerAction = when {
-    isSubsumed || trackingState == TrackingState.STOPPED -> PlaneVisualizerAction.SKIP
+    !isPlaneRenderable(trackingState, isSubsumed) -> PlaneVisualizerAction.SKIP
     hasVisualizer -> PlaneVisualizerAction.UPDATE
     isLargeEnough -> PlaneVisualizerAction.CREATE
     else -> PlaneVisualizerAction.SKIP
 }
+
+/** Shared by the renderer and standalone plane visualizers: stale geometry is never drawn. */
+internal fun isPlaneRenderable(trackingState: TrackingState, isSubsumed: Boolean): Boolean =
+    trackingState == TrackingState.TRACKING && !isSubsumed
 
 /**
  * Whether a plane of [type] whose bounding rectangle measures [extentX] × [extentZ] metres is

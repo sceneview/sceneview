@@ -17,9 +17,9 @@ import kotlinx.coroutines.delay
  * |---|---|---|---|
  * | Looking for a surface | every surface | — | — |
  * | Tracking lost, object placed | — | — | — |
- * | The object lands | for [PlacementGuidePolicy.LAND_MS] | for [PlacementGuidePolicy.RING_MS] | for [PlacementGuidePolicy.DIMENSIONS_MS] |
- * | Placed, left alone | — | once tapped | once tapped, or always with [AutoPlacementState.alwaysShowsDimensions] |
- * | Dragged or turned | yes, and [PlacementGuidePolicy.RELEASE_MS] after release | yes, wider | yes |
+ * | The object lands | fade out in 0.4 s | — | for [PlacementGuidePolicy.DIMENSIONS_MS] |
+ * | Placed, left alone | — | — | once tapped, or always with [AutoPlacementState.alwaysShowsDimensions] |
+ * | Dragged or turned | yes, fade out on release | yes, wider, fade out on release | yes |
  *
  * The surfaces say where the object can go, so they show while it is looking for one and while
  * it moves, then fade: a placed object stands on its contact shadow, and nothing else moves on
@@ -55,22 +55,14 @@ class PlacementGuide internal constructor(
 
 /** The timing behind [PlacementGuide] — pure, pinned in `PlacementGuideTest`. */
 internal object PlacementGuidePolicy {
-    /** The surfaces stay this long after the object lands, so it is seen landing on them. */
-    const val LAND_MS = 800L
-
-    /** The ring closes around a new placement and stays this long. */
-    const val RING_MS = 1_500L
-
     /** Dimension marks show this long after the first landing, so they are discovered. */
     const val DIMENSIONS_MS = 3_000L
-
-    /** After a drag or a twist, the surfaces and the ring stay this long. */
-    const val RELEASE_MS = 1_000L
 
     /**
      * The guide for [phase], [sincePlacedMs] after the object last landed from a search and
      * [sinceReleaseMs] after the last gesture ended (`null`: not since the last search).
      */
+    @Suppress("UNUSED_PARAMETER")
     fun guide(
         phase: PlacementPhase,
         selected: Boolean,
@@ -87,8 +79,8 @@ internal object PlacementGuidePolicy {
                 if (hasPlacement) PlacementGuide.Nothing else PlacementGuide.Searching
             PlacementPhase.ADJUSTING -> PlacementGuide(planes = true, ring = true, dimensions = true, held = true)
             PlacementPhase.PLACED -> PlacementGuide(
-                planes = within(sincePlacedMs, LAND_MS) || within(sinceReleaseMs, RELEASE_MS),
-                ring = selected || within(sincePlacedMs, RING_MS) || within(sinceReleaseMs, RELEASE_MS),
+                planes = false,
+                ring = false,
                 dimensions = alwaysShowsDimensions || selected || within(sincePlacedMs, DIMENSIONS_MS),
             )
             PlacementPhase.INITIALIZING, PlacementPhase.RECOVERY_FAILED,
@@ -97,13 +89,10 @@ internal object PlacementGuidePolicy {
     }
 
     /** Milliseconds until the guide can next change on its own, `null` when it cannot. */
-    fun nextChangeMs(sincePlacedMs: Long?, sinceReleaseMs: Long?): Long? {
-        val ahead = buildList {
-            sincePlacedMs?.let { since -> listOf(LAND_MS, RING_MS, DIMENSIONS_MS).forEach { add(it - since) } }
-            sinceReleaseMs?.let { add(RELEASE_MS - it) }
-        }.filter { it > 0 }
-        return ahead.minOrNull()
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun nextChangeMs(sincePlacedMs: Long?, sinceReleaseMs: Long?): Long? =
+        sincePlacedMs?.let { DIMENSIONS_MS - it }?.takeIf { it > 0 }
+
 }
 
 /**

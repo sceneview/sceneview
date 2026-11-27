@@ -1,9 +1,6 @@
 package io.github.sceneview.ar
 
 import io.github.sceneview.ar.PlacementGuidePolicy.DIMENSIONS_MS
-import io.github.sceneview.ar.PlacementGuidePolicy.LAND_MS
-import io.github.sceneview.ar.PlacementGuidePolicy.RELEASE_MS
-import io.github.sceneview.ar.PlacementGuidePolicy.RING_MS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,15 +37,13 @@ class PlacementGuideTest {
     }
 
     @Test
-    fun `a landing keeps the surfaces, then the ring, then the dimensions a moment`() {
-        val landing = guide(PlacementPhase.PLACED, sincePlaced = 0)
-        assertTrue(landing.planes && landing.ring && landing.dimensions)
-        val afterLand = guide(PlacementPhase.PLACED, sincePlaced = LAND_MS)
-        assertFalse(afterLand.planes)
-        assertTrue(afterLand.ring)
-        val afterRing = guide(PlacementPhase.PLACED, sincePlaced = RING_MS)
-        assertFalse(afterRing.ring)
-        assertTrue(afterRing.dimensions)
+    fun `placement immediately starts fading the planes and leaves no footprint ring`() {
+        for (time in listOf<Long?>(null, 0, 100, 800, 1500, 60000)) {
+            val g = guide(PlacementPhase.PLACED, sincePlaced = time)
+            assertFalse(g.planes)
+            assertFalse(g.ring)
+        }
+        assertTrue(guide(PlacementPhase.PLACED, sincePlaced = 0).dimensions)
         assertEquals(PlacementGuide.Nothing, guide(PlacementPhase.PLACED, sincePlaced = DIMENSIONS_MS))
     }
 
@@ -77,47 +72,46 @@ class PlacementGuideTest {
     }
 
     @Test
-    fun `selection shows the ring and the dimensions, not the surfaces`() {
+    fun `selection shows dimensions without restoring planes or the footprint ring`() {
         val g = guide(PlacementPhase.PLACED, selected = true, sincePlaced = 60_000)
         assertFalse(g.planes)
-        assertTrue(g.ring)
+        assertFalse(g.ring)
         assertTrue(g.dimensions)
     }
 
     @Test
-    fun `a drag brings the surfaces back under a wider ring until a second after release`() {
-        val drag = guide(PlacementPhase.ADJUSTING, selected = true, sincePlaced = 60_000)
+    fun `a drag restores the guides and release starts fading immediately`() {
+        val drag = guide(PlacementPhase.ADJUSTING, selected = true, sincePlaced = 60000)
         assertTrue(drag.planes && drag.ring && drag.dimensions && drag.held)
-        val released = guide(PlacementPhase.PLACED, sincePlaced = 60_000, sinceRelease = RELEASE_MS - 1)
-        assertTrue(released.planes)
-        assertTrue(released.ring)
-        assertFalse(released.held)
-        assertFalse(guide(PlacementPhase.PLACED, sincePlaced = 60_000, sinceRelease = RELEASE_MS).planes)
+        for (time in listOf(0L, 100L, 1000L)) {
+            val released = guide(PlacementPhase.PLACED, sincePlaced = 60000, sinceRelease = time)
+            assertFalse(released.planes)
+            assertFalse(released.ring)
+            assertFalse(released.held)
+        }
     }
 
     @Test
-    fun `the clock wakes at the next change and not after the last one`() {
-        assertEquals(LAND_MS, PlacementGuidePolicy.nextChangeMs(0, null))
-        assertEquals(RING_MS - 900, PlacementGuidePolicy.nextChangeMs(900, null))
+    fun `the clock only wakes for dimensions after landing`() {
+        assertEquals(DIMENSIONS_MS, PlacementGuidePolicy.nextChangeMs(0, null))
         assertEquals(200L, PlacementGuidePolicy.nextChangeMs(DIMENSIONS_MS - 200, null))
-        assertEquals(RELEASE_MS - 10, PlacementGuidePolicy.nextChangeMs(60_000, 10))
-        assertNull(PlacementGuidePolicy.nextChangeMs(60_000, RELEASE_MS))
+        assertNull(PlacementGuidePolicy.nextChangeMs(60000, 10))
         assertNull(PlacementGuidePolicy.nextChangeMs(null, null))
     }
 
     @Test
-    fun `the ring's edgings hug its stroke on both sides, wider when held`() {
+    fun `the manipulation ring has only a light stroke and no black edging`() {
         val footprint = SelectionRing.Footprint(0f, 0f, 0.5f)
-        val idle = SelectionRing.bands(footprint, held = false)
-        val held = SelectionRing.bands(footprint, held = true)
-        val stroke = idle.single { it.isStroke }
-        assertEquals(0.5f, stroke.radius, 0f)
-        assertEquals(SelectionRing.tubeRadius(0.5f), stroke.tube, 1e-7f)
-        val (inner, outer) = idle.filterNot { it.isStroke }.sortedBy { it.radius }
-        // Each edging touches the stroke, one on each side.
-        assertEquals(stroke.radius - stroke.tube, inner.radius + inner.tube, 1e-6f)
-        assertEquals(stroke.radius + stroke.tube, outer.radius - outer.tube, 1e-6f)
-        assertEquals(stroke.tube * SelectionRing.HELD_WIDTH, held.single { it.isStroke }.tube, 1e-7f)
+        val idle = SelectionRing.bands(footprint, held = false).single()
+        val held = SelectionRing.bands(footprint, held = true).single()
+        assertTrue(idle.isStroke && held.isStroke)
+        assertEquals(0.5f, idle.radius, 0f)
+        assertEquals(idle.tube * SelectionRing.HELD_WIDTH, held.tube, 1e-7f)
+    }
+
+    @Test
+    fun `default placement uses light driven shadows without an artificial bounds pool`() {
+        assertFalse(AutoPlacementState().showsContactShadow)
     }
 
     @Test

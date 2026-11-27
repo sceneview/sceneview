@@ -188,6 +188,8 @@ fun PlacementScene(
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
     val controller = remember { PlacementController() }
+    val placementCameraStream = rememberARCameraStream(materialLoader)
+    var isDragging by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
 
     // Latest ARCore frame, captured from onSessionUpdated so the tap gesture (which runs on the
@@ -224,9 +226,9 @@ fun PlacementScene(
     // covered by two coplanar shadowMultiplier receivers at once (#2657).
     val placedCount by remember { derivedStateOf { controller.count } }
     val showPlaneRenderer =
-        shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+        shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount, isDragging)
     val spawnShadowCatchers =
-        shouldCatchGroundShadows(groundShadows, planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+        shouldCatchGroundShadows(groundShadows, planeRenderer, fadePlaneOnFirstPlacement, placedCount, isDragging)
 
     Box(modifier = modifier.fillMaxSize()) {
         ARSceneView(
@@ -234,6 +236,8 @@ fun PlacementScene(
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            cameraStream = placementCameraStream,
+            depthMode = Config.DepthMode.AUTOMATIC,
             playbackDataset = playbackDataset,
             planeRenderer = showPlaneRenderer,
             planeFindingMode = planeFindingMode,
@@ -251,15 +255,19 @@ fun PlacementScene(
                     isTracking = false
                     anyPlaneTracked = false
                     reticlePhase = ReticlePhase.SEARCHING
+                    isDragging = false
                     controller.clear()
                 }
             },
             onSessionUpdated = { updatedSession, frame ->
+                placementCameraStream.isDepthOcclusionEnabled =
+                    io.github.sceneview.ar.scene.shouldOccludePlanes(updatedSession.config.depthMode)
                 latestFrame = frame
                 if (session !== updatedSession) session = updatedSession
                 // Tracked unconditionally since #3569: the reticle is only composed while the
                 // camera is TRACKING, so this is no longer a coaching-only signal.
                 isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                if (!isTracking) isDragging = false
                 if (coaching) {
                     cameraReady = true
                     if (!anyPlaneTracked) {
@@ -272,6 +280,8 @@ fun PlacementScene(
             onARCoreAvailability = { arCoreUnavailable = it != null },
             onCameraPermissionStateChanged = { cameraDenied = it != null },
             onGestureListener = rememberOnGestureListener(
+                onMoveBegin = { _, _, node -> isDragging = node != null },
+                onMoveEnd = { _, _, _ -> isDragging = false },
                 onSingleTapConfirmed = { event: MotionEvent, node ->
                     // A tap on an existing scene node is a gesture on that node (drag / scale /
                     // rotate) — don't spawn a fresh anchor on top of it.
@@ -294,7 +304,7 @@ fun PlacementScene(
             // Purely visual: the tap handler above runs its own hit-test at the tap coordinates,
             // so placement is not centre-only.
             if (shouldShowReticle(
-                    showReticle = showReticle,
+                    showReticle = showReticle && placedCount == 0,
                     viewportMeasured = viewportSize != IntSize.Zero,
                     cameraTracking = isTracking,
                 )
@@ -401,7 +411,8 @@ internal fun shouldRenderPlaneGrid(
     planeRenderer: Boolean,
     fadePlaneOnFirstPlacement: Boolean,
     placedCount: Int,
-): Boolean = planeRenderer && !(fadePlaneOnFirstPlacement && placedCount > 0)
+    isDragging: Boolean = false,
+): Boolean = planeRenderer && (isDragging || !(fadePlaneOnFirstPlacement && placedCount > 0))
 
 /**
  * Whether [PlacementScene] attaches a contact-shadow catcher
@@ -426,8 +437,9 @@ internal fun shouldCatchGroundShadows(
     planeRenderer: Boolean,
     fadePlaneOnFirstPlacement: Boolean,
     placedCount: Int,
+    isDragging: Boolean = false,
 ): Boolean = groundShadows &&
-    !shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+    !shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount, isDragging)
 
 /**
  * Holds the [Anchor]s created by tap-to-place inside a [PlacementScene].

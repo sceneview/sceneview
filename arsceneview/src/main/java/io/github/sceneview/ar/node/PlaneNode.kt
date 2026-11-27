@@ -20,7 +20,7 @@ import com.google.ar.core.TrackingState
  * **Subsumed planes.** When ARCore merges two coplanar overlapping planes the smaller one is
  * subsumed — its [Plane.getTrackingState] goes to [TrackingState.STOPPED] and
  * [io.github.sceneview.ar.arcore.subsumedBy] points at the survivor. A `PlaneNode` for a
- * subsumed plane simply stops being visible (STOPPED ∉ [visibleTrackingStates] by default);
+ * subsumed plane stops being visible immediately, even before its tracking state changes;
  * apps that want to re-home content should observe the lifecycle from
  * [io.github.sceneview.ar.ARSceneScope.rememberDetectedPlanes].
  *
@@ -48,6 +48,11 @@ open class PlaneNode(
     onTrackingStateChanged = onTrackingStateChanged,
     onUpdated = onUpdated
 ) {
+
+    // Subsumption does not necessarily change TrackingState in the same frame.
+    override var isVisible: Boolean
+        get() = super.isVisible && trackable?.subsumedBy == null
+        set(value) { super.isVisible = value }
 
     /**
      * The plane's orientation — horizontal (upward / downward facing) or vertical.
@@ -94,9 +99,10 @@ open class PlaneNode(
 
     /** The class-specific trackable refresh — gated behind [constructed] (#2624). */
     private fun applyTrackableState() {
+        updateVisibility()
         // Only follow the plane while ARCore is actively tracking it. A paused / stopped plane
         // keeps its last pose so subsumed-plane content does not teleport to the AR origin.
-        if (plane.trackingState == TrackingState.TRACKING) {
+        if (plane.trackingState == TrackingState.TRACKING && plane.subsumedBy == null) {
             pose = plane.centerPose
         }
     }
