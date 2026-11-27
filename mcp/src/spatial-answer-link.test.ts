@@ -109,7 +109,14 @@ describe("show_in_space tool", () => {
           text: `Desk: 80 × 75 × 40 cm — ${url}\nOpens at real scale in the SceneView app on Android; without the app, the page shows the size.`,
         },
       ],
-      structuredContent: { url, label: "Desk", sizeCm: [80, 75, 40], placement: "floor" },
+      structuredContent: {
+        url,
+        label: "Desk",
+        sizeCm: [80, 75, 40],
+        placement: "floor",
+        dimensionSource: "user",
+      },
+      _meta: { ui: { resourceUri: "ui://widget/show-in-space.html" } },
     });
   });
 

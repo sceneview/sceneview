@@ -11,7 +11,7 @@
 import { DEBUG_CATEGORIES } from "../debug-issue.js";
 import { PLATFORM_IDS } from "../platform-setup.js";
 import { SAMPLE_IDS, SAMPLES } from "../samples.js";
-import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
+import { WIDGET_3D_VIEWER_URI, WIDGET_SHOW_IN_SPACE_URI } from "../widgets.js";
 import type { ToolDefinition } from "./types.js";
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -892,9 +892,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         label: { type: "string" },
         sizeCm: { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3 },
         placement: { type: "string", enum: ["floor", "table"] },
+        dimensionSource: { type: "string", enum: ["user", "estimated"] },
       },
-      required: ["url", "label", "sizeCm", "placement"],
+      required: ["url", "label", "sizeCm", "placement", "dimensionSource"],
       additionalProperties: false,
+    },
+    _meta: {
+      ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI },
+      "openai/outputTemplate": WIDGET_SHOW_IN_SPACE_URI,
+      "openai/toolInvocation/invoking": "Drawing size preview",
+      "openai/toolInvocation/invoked": "Size preview ready",
     },
     annotations: {
       readOnlyHint: true,

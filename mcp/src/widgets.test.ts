@@ -19,6 +19,8 @@ import {
   uiExtensionSettings,
   WIDGET_3D_VIEWER_HTML,
   WIDGET_3D_VIEWER_URI,
+  WIDGET_SHOW_IN_SPACE_HTML,
+  WIDGET_SHOW_IN_SPACE_URI,
   WIDGET_UI_META,
 } from "./widgets.js";
 
@@ -44,6 +46,8 @@ describe("widget resource registry", () => {
       "https://media.sketchfab.com",
       "https://cdn.jsdelivr.net",
       "https://arcamera-api.mcp-tools-lab.workers.dev",
+      "blob:",
+      "data:",
     ]);
   });
 
@@ -62,17 +66,20 @@ describe("widget resource registry", () => {
 });
 
 describe("3D viewer widget HTML", () => {
-  it("pins SceneView.js and Filament.js to the released SDK version", () => {
+  it("loads the pinned primary scripts only after the WASM probe", () => {
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      `src="https://sceneview.github.io/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}"`
+      `FILAMENT_URL = "https://sceneview.github.io/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}"`
     );
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      `src="https://sceneview.github.io/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}"`
+      `SCENEVIEW_URL = "https://sceneview.github.io/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}"`
     );
-    // Every script tag on the page comes from the one CSP resource domain.
-    const srcs = [...WIDGET_3D_VIEWER_HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
-    expect(srcs.length).toBeGreaterThan(0);
-    for (const src of srcs) expect(src.startsWith("https://sceneview.github.io/")).toBe(true);
+    expect(WIDGET_3D_VIEWER_HTML).not.toMatch(/<script src=/);
+    const choose = WIDGET_3D_VIEWER_HTML.slice(
+      WIDGET_3D_VIEWER_HTML.indexOf("function chooseRenderer")
+    );
+    expect(choose.indexOf("WebAssembly.compile")).toBeLessThan(
+      choose.indexOf("loadScript(FILAMENT_URL)")
+    );
   });
 
   it("reads the payload from the bridge, then window.openai, then the query string", () => {
@@ -90,10 +97,14 @@ describe("3D viewer widget HTML", () => {
     expect(html).toContain('"ui/notifications/initialized"');
   });
 
-  it("renders with SceneView.modelViewer and an absolute IBL", () => {
+  it("retains the viewer before loading a resolved URL and uses an absolute IBL", () => {
     // `url`, not `data.modelUrl`: a 3MF is converted to a blob GLB first (#3482),
     // and the renderer must be handed the resolved URL, never the raw one.
-    expect(WIDGET_3D_VIEWER_HTML).toContain("SceneView.modelViewer(canvas, url");
+    expect(WIDGET_3D_VIEWER_HTML).toContain(
+      'kind === "filament" ? window.SceneView : window.SceneViewFallback'
+    );
+    expect(WIDGET_3D_VIEWER_HTML).toContain("factory.create(targetCanvas");
+    expect(WIDGET_3D_VIEWER_HTML).toContain("instance.loadModel(url)");
     expect(WIDGET_3D_VIEWER_HTML).toContain(
       'IBL_URL = "https://sceneview.github.io/environments/neutral_ibl.ktx"'
     );
@@ -133,6 +144,38 @@ describe("3D viewer widget HTML", () => {
 });
 
 describe("Open in AR action", () => {
+  it.each([WIDGET_3D_VIEWER_HTML, WIDGET_SHOW_IN_SPACE_HTML])(
+    "keeps a compact desktop overlay and a full-width phone action",
+    (html) => {
+      const rule = (selector: string) => html.split(`${selector} {`)[1]?.split("}")[0];
+      expect(rule("#ar.wide")).toMatch(/position:\s*absolute/);
+      expect(rule("#ar.wide")).toMatch(/bottom:\s*12px/);
+      expect(rule("#ar.wide")).toMatch(/right:\s*12px/);
+      expect(rule("#ar.wide.has-qr #ar-qr")).toMatch(/width:\s*96px/);
+      expect(rule("#ar.wide.has-qr #ar-qr")).toMatch(/height:\s*96px/);
+      expect(rule("#ar .long, #ar-qr, #ar-scan")).toMatch(/display:\s*none/);
+      for (const selector of ["#ar-card", "#ar-copy", "#ar-open"]) {
+        expect(rule(selector)).toMatch(/width:\s*100%/);
+      }
+      expect(rule("#ar.wide #ar-card")).toContain("var(--sv-surface)");
+      expect(html).toContain('<span>Open in AR<span class="long"> on your phone</span></span>');
+      // The card overlays the preview on desktop, outside the canvas flex child,
+      // so it can return to document flow below the canvas on a phone.
+      const stack: (string | undefined)[] = [];
+      const parents: Record<string, string | undefined> = {};
+      for (const match of html.split("<script>")[0].matchAll(/<\/?div\b[^>]*>/g)) {
+        if (match[0].startsWith("</")) stack.pop();
+        else {
+          const id = match[0].match(/id="([^"]+)"/)?.[1];
+          if (id) parents[id] = stack.at(-1);
+          stack.push(id);
+        }
+      }
+      expect(parents["canvas-wrap"]).toBe("preview");
+      expect(parents.ar).toBe("preview");
+      expect(parents.footer).toBe("stage");
+    }
+  );
   // The exact function the widget runs, evaluated from the same source string.
   const openInArUrl = new Function(`${OPEN_IN_AR_JS}; return openInArUrl;`)() as (
     modelUrl: unknown,
@@ -179,9 +222,7 @@ describe("Open in AR action", () => {
     // The action appears whether or not the in-chat preview manages to load.
     const updateAt = html.indexOf("updateArAction(data);");
     expect(updateAt).toBeGreaterThan(html.indexOf("function render(data)"));
-    expect(updateAt).toBeLessThan(
-      html.indexOf("whenSceneViewReady(function () { start(data); });")
-    );
+    expect(updateAt).toBeLessThan(html.indexOf("await chooseRenderer();"));
   });
 
   it("follows the link through the host, with a plain anchor as the last resort", () => {
@@ -364,5 +405,46 @@ describe("MCP Apps extension negotiation (#3192)", () => {
     expect(serveWidgetsTo({ mimeTypes: ["text/uri-list"] })).toBe(false);
     // `text/html+skybridge` is the WITHDRAWN OpenAI spelling, not ours (#3189).
     expect(serveWidgetsTo({ mimeTypes: ["text/html+skybridge"] })).toBe(false);
+  });
+});
+
+describe("show_in_space widget resource", () => {
+  it("lists and reads the resource with the same CSP as the viewer", () => {
+    const resource = listWidgetResources().find((r) => r.uri === WIDGET_SHOW_IN_SPACE_URI);
+    expect(resource).toMatchObject({
+      uri: "ui://widget/show-in-space.html",
+      mimeType: MCP_APP_MIME_TYPE,
+      _meta: { ui: WIDGET_UI_META },
+    });
+    const read = readWidgetResource(WIDGET_SHOW_IN_SPACE_URI);
+    expect(read?.text).toBe(WIDGET_SHOW_IN_SPACE_HTML);
+    expect(read?._meta).toEqual(readWidgetResource(WIDGET_3D_VIEWER_URI)?._meta);
+    expect(Buffer.byteLength(read?.text || "")).toBeLessThan(60_000);
+    expect(read?.text).toContain('canvas.getContext("2d")');
+    expect(read?.text).toContain("data.sizeCm[0] / 100");
+    expect(read?.text).toContain("data.sizeCm[1] / 100");
+    expect(read?.text).toContain("data.sizeCm[2] / 100");
+    expect(read?.text).toContain("estimated size");
+    expect(read?.text).toContain("Open in AR");
+  });
+  it("binds both metadata conventions and returns the dimension provenance", async () => {
+    const def = TOOL_DEFINITIONS.find((t) => t.name === "show_in_space");
+    expect(def?._meta).toMatchObject({
+      ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI },
+      "openai/outputTemplate": WIDGET_SHOW_IN_SPACE_URI,
+    });
+    const result = await dispatchTool("show_in_space", {
+      widthCm: 80,
+      heightCm: 75,
+      depthCm: 40,
+      label: "Desk",
+      dimensionSource: "estimated",
+    });
+    expect(result._meta).toEqual({ ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI } });
+    expect(result.structuredContent).toMatchObject({
+      sizeCm: [80, 75, 40],
+      dimensionSource: "estimated",
+    });
+    expect(def?.outputSchema?.required).toContain("dimensionSource");
   });
 });

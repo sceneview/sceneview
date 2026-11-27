@@ -194,7 +194,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(content[0]?.text).toBe("Unknown tool: no_such_tool");
   });
 
-  it("resources/list includes the widget after the four historical resources", async () => {
+  it("resources/list includes both widgets after the four historical resources", async () => {
     const body = await rpc("resources/list");
     const resources = body.result?.resources as Array<{ uri: string; mimeType: string }>;
     expect(resources.map((r) => r.uri)).toEqual([
@@ -203,6 +203,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
       "examples://demo-with-settings",
       "examples://sketchfab-streaming",
       "ui://widget/3d-viewer.html",
+      "ui://widget/show-in-space.html",
     ]);
   });
 
@@ -219,7 +220,9 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(contents[0]?.uri).toBe("ui://widget/3d-viewer.html");
     expect(contents[0]?.mimeType).toBe("text/html;profile=mcp-app");
     expect(contents[0]?.text).toContain("<!DOCTYPE html>");
-    expect(contents[0]?.text).toContain("SceneView.modelViewer(");
+    expect(contents[0]?.text).toContain("window.SceneView : window.SceneViewFallback");
+    expect(contents[0]?.text).toContain("factory.create(");
+    expect(contents[0]?.text).toContain("instance.loadModel(url)");
     expect(contents[0]?._meta?.ui?.prefersBorder).toBe(true);
     expect(contents[0]?._meta?.ui?.csp?.resourceDomains).toEqual(["https://sceneview.github.io"]);
     expect(contents[0]?._meta?.ui?.csp?.connectDomains).toContain("https://media.sketchfab.com");

@@ -68,7 +68,7 @@ import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
 import { formatSearchResults, searchModels } from "../search-models.js";
 import { buildSpatialAnswerSpec, spatialAnswerUrl } from "../spatial-answer-link.js";
 import { formatValidationReport, validateCode } from "../validator.js";
-import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
+import { WIDGET_3D_VIEWER_URI, WIDGET_SHOW_IN_SPACE_URI } from "../widgets.js";
 import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 
 // ─── Legal disclaimer (identical to index.ts 4.0.0) ─────────────────────
@@ -1046,7 +1046,14 @@ export async function dispatchTool(
               text: `${spec.label}: ${sizeCm.join(" × ")} cm — ${url}\nOpens at real scale in the SceneView app on Android; without the app, the page shows the size.`,
             },
           ],
-          structuredContent: { url, label: spec.label, sizeCm, placement: spec.placement },
+          structuredContent: {
+            url,
+            label: spec.label,
+            sizeCm,
+            placement: spec.placement,
+            dimensionSource: spec.dimensionSource,
+          },
+          _meta: { ui: { resourceUri: WIDGET_SHOW_IN_SPACE_URI } },
         };
       } catch (error) {
         return {
