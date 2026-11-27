@@ -6,12 +6,12 @@
     "url": "https://github.com/sceneview/sceneview",
     "source": "github"
   },
-  "version": "4.3.4",
+  "version": "4.4.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "sceneview-mcp",
-      "version": "4.3.4",
+      "version": "4.4.0",
       "transport": {
         "type": "stdio"
       }

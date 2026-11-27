@@ -1,6 +1,6 @@
 {
   "name": "sceneview-mcp",
-  "version": "4.3.4",
+  "version": "4.4.0",
   "mcpName": "io.github.sceneview/mcp",
   "description": "MCP server for SceneView, the 3D & AR SDK for Android and the web. Gives your AI coding assistant the full SceneView SDK so it writes correct, compilable code.",
   "keywords": [
