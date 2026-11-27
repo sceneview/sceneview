@@ -26,6 +26,7 @@ package io.github.sceneview.ar.collaborative
  *                   "translation":[x,y,z], "quaternion":[x,y,z,w], "scale":[x,y,z],
  *                   "clock":<counter>}
  * {"type":"remove", "peer":"<id>", "node":"<key>", "clock":<counter>}
+ * {"type":"snapshot", "peer":"<relay>", "owner":"<writer>", ...node fields...}
  * {"type":"bye",    "peer":"<id>"}
  * ```
  *
@@ -42,6 +43,9 @@ package io.github.sceneview.ar.collaborative
  *   by the `clock` counter and then the `peer` id — see [CollaborativeState].
  * - `remove` — the removal of a placed node, ordered like `node` so a
  *   placement written earlier cannot bring the node back.
+ * - `snapshot` — an internal late-join replay of a current node. The relay is
+ *   connection-authenticated while `owner` preserves the original write's
+ *   conflict version. Older peers ignore this unknown message type.
  *
  * ### Compatibility with peers that predate `clock` and `remove`
  *
@@ -71,6 +75,7 @@ public object CollaborativeWireFormat {
     public const val TYPE_NODE: String = "node"
     public const val TYPE_REMOVE: String = "remove"
     public const val TYPE_BYE: String = "bye"
+    private const val TYPE_SNAPSHOT: String = "snapshot"
 
     // ── Encoders ──────────────────────────────────────────────────────────
 
@@ -240,6 +245,35 @@ public object CollaborativeWireFormat {
         }
     }
 
+    /** Encodes one current node for a bounded late-join state replay. */
+    internal fun snapshot(relayPeerId: String, nodeState: CollaborativeMessage.NodeState): String {
+        require(nodeState.logicalClock > 0L) { "snapshot logicalClock must be positive" }
+        require(nodeState.translation.size == 3) { "translation must have 3 components" }
+        require(nodeState.quaternion.size == 4) { "quaternion must have 4 components" }
+        require(nodeState.scale.size == 3) { "scale must have 3 components" }
+        return buildString(256) {
+            append('{')
+            appendField("type", TYPE_SNAPSHOT)
+            append(',')
+            appendField("peer", relayPeerId)
+            append(',')
+            appendField("owner", nodeState.peerId)
+            append(',')
+            appendField("node", nodeState.nodeKey)
+            append(',')
+            appendField("model", nodeState.modelKey)
+            append(',')
+            appendVec("translation", nodeState.translation)
+            append(',')
+            appendVec("quaternion", nodeState.quaternion)
+            append(',')
+            appendVec("scale", nodeState.scale)
+            append(",\"clock\":")
+            append(nodeState.logicalClock)
+            append("}\n")
+        }
+    }
+
     // ── Decoder ───────────────────────────────────────────────────────────
 
     /**
@@ -290,7 +324,7 @@ public object CollaborativeWireFormat {
         )
     }
 
-    private fun parseNode(line: String, peer: String): CollaborativeMessage? {
+    private fun parseNode(line: String, peer: String): CollaborativeMessage.NodeState? {
         val nodeKey = stringField(line, "node")
         val modelKey = stringField(line, "model")
         val transform = parseTransform(line) ?: return null
@@ -318,6 +352,22 @@ public object CollaborativeWireFormat {
         val nodeKey = stringField(line, "node") ?: return null
         val logicalClock = longField(line, "clock")?.takeIf { it > 0L } ?: return null
         return CollaborativeMessage.NodeRemoval(peer, nodeKey, logicalClock)
+    }
+
+    /** Decoded internal late-join replay, kept out of the public message API. */
+    internal data class Snapshot(
+        val relayPeerId: String,
+        val nodeState: CollaborativeMessage.NodeState,
+    )
+
+    internal fun parseSnapshot(line: String): Snapshot? {
+        val trimmed = line.trim()
+        if (stringField(trimmed, "type") != TYPE_SNAPSHOT) return null
+        val relayPeer = stringField(trimmed, "peer") ?: return null
+        val ownerPeer = stringField(trimmed, "owner") ?: return null
+        val node = parseNode(trimmed, ownerPeer) ?: return null
+        if (node.logicalClock <= 0L) return null
+        return Snapshot(relayPeer, node)
     }
 
     /** A `translation`/`quaternion`/`scale` triple parsed off one line. */

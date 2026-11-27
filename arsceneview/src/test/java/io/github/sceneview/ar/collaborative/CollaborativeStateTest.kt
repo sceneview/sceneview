@@ -293,14 +293,21 @@ class CollaborativeStateTest {
     }
 
     @Test
-    fun `a counter at its ceiling does not wrap`() {
+    fun `a hostile counter at its ceiling is rejected and does not lock the key`() {
         val state = CollaborativeState(local)
-        state.apply(place("p1", clock = Long.MAX_VALUE, key = "k"))
-        assertEquals(Long.MAX_VALUE, state.nextNodeClock("k", nowEpochMs = 1_000L))
+        assertFalse(
+            state.applyRemote(
+                place("hostile", clock = Long.MAX_VALUE, key = "k"),
+                nowEpochMs = 1_000L,
+            ),
+        )
+        assertEquals(1_000L, state.nextNodeClock("k", nowEpochMs = 1_000L))
+        assertTrue(state.applyLocal(place(local, clock = 1_000L, key = "k")))
+        assertEquals(local, state.placedNodes.single().ownerPeerId)
     }
 
     @Test
-    fun `only the most recent removals are remembered`() {
+    fun `an evicted removal still blocks an older late placement`() {
         val state = CollaborativeState(local, maxNodes = 2)
         state.apply(remove("p1", clock = 10L, key = "k1"))
         state.apply(remove("p1", clock = 11L, key = "k2"))
@@ -309,12 +316,10 @@ class CollaborativeStateTest {
         // The two newest still reject a placement written before them.
         assertFalse(state.apply(place("p1", clock = 5L, key = "k2")))
         assertFalse(state.apply(place("p1", clock = 5L, key = "k3")))
-        // The oldest was forgotten — but this device's own next write to that
-        // key starts above it, so peers that remember the removal accept it.
+        // The per-key tombstone was evicted, but its global high-water remains.
         assertEquals(11L, state.nextNodeClock("k1"))
-        // The documented limit: a placement older than the forgotten removal
-        // is accepted again.
-        assertTrue(state.apply(place("p1", clock = 5L, key = "k1")))
+        assertFalse(state.apply(place("p1", clock = 5L, key = "k1")))
+        assertTrue(state.apply(place("p1", clock = 11L, key = "k1")))
     }
 
     @Test
@@ -327,7 +332,7 @@ class CollaborativeStateTest {
 
         // k2 was the oldest removal, not k1.
         assertFalse(state.apply(place("p1", clock = 11L, key = "k1")))
-        assertTrue(state.apply(place("p1", clock = 5L, key = "k2")))
+        assertFalse(state.apply(place("p1", clock = 5L, key = "k2")))
     }
 
     @Test
@@ -339,6 +344,16 @@ class CollaborativeStateTest {
         )
         assertTrue(state.apply(msg))
         assertFalse(state.apply(msg))
+    }
+
+    @Test
+    fun `late join node snapshots are bounded`() {
+        val state = CollaborativeState(local)
+        state.apply(place("p1", clock = 1L, key = "k1"))
+        state.apply(place("p1", clock = 2L, key = "k2"))
+        state.apply(place("p1", clock = 3L, key = "k3"))
+
+        assertEquals(listOf("k1", "k2"), state.nodeSnapshots(maxCount = 2).map { it.nodeKey })
     }
 
     @Test

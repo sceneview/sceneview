@@ -229,6 +229,52 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `start after stop creates fresh state and reconnects`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+        alice.placeNode("old", "chair", at(1f), identity)
+        alice.testOnlyReceive(
+            "bob",
+            CollaborativeWireFormat.anchor("bob", "old-anchor", "room"),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("old"), alice.placedNodes.map { it.nodeKey })
+        assertEquals("old-anchor", alice.sharedCloudAnchorId)
+
+        alice.stop()
+        advanceUntilIdle()
+        assertTrue(bob.participants.none { it.id == "alice" })
+
+        alice.start()
+        advanceUntilIdle()
+        assertTrue(alice.isStarted)
+        assertTrue(alice.placedNodes.isEmpty())
+        assertTrue(alice.sharedCloudAnchorId == null)
+        assertTrue(bob.participants.any { it.id == "alice" })
+    }
+
+    @Test
+    fun `late join receives the current shared anchor`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        alice.testOnlyReceive(
+            "host",
+            CollaborativeWireFormat.anchor("host", "cloud-current", "room"),
+        )
+        advanceUntilIdle()
+
+        val bob = session(hub.join("bob"), "Bob")
+        bob.start()
+        advanceUntilIdle()
+
+        assertEquals("cloud-current", bob.sharedCloudAnchorId)
+    }
+
+    @Test
     fun `last-writer-wins across two peers for the same node key`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val carol = session(hub.join("carol"), "Carol")
@@ -427,14 +473,14 @@ class CollaborativeSessionTest {
             advanceUntilIdle()
         }
 
-        // Dave joins a second later. Nodes placed before a device joined are
-        // not sent to it, so he has never seen a write to "k" — a restarted
-        // peer is in the same position.
+        // Dave joins a second later. The existing-peer leader sends a bounded
+        // snapshot that retains Alice's original write and ownership.
         wallClockMs += 1_000L
         val dave = session(hub.join("dave"), "Dave")
         dave.start()
         advanceUntilIdle()
-        assertTrue(dave.placedNodes.isEmpty())
+        assertEquals("alice", dave.placedNodes.single().ownerPeerId)
+        assertEquals(49f, dave.placedNodes.single().translation[0], 0f)
 
         dave.placeNode("k", "lamp", at(99f), identity)
         advanceUntilIdle()
@@ -446,13 +492,12 @@ class CollaborativeSessionTest {
     }
 
     @Test
-    fun `a write that cannot outrank what a peer sent is neither shown nor sent`() = runTest {
+    fun `a hostile maximum counter does not prevent the next local write`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val probe = WireProbe(hub)
         val alice = session(hub.join("alice"), "Alice")
         alice.start()
-        // A peer that sends the largest counter there is leaves no room above
-        // it for a peer with a smaller id.
+        // The receiver rejects a counter far beyond its wall clock.
         alice.testOnlyReceive(
             "bob",
             CollaborativeWireFormat.node("bob", "k", "lamp", at(2f), identity, unit, Long.MAX_VALUE),
@@ -460,13 +505,11 @@ class CollaborativeSessionTest {
         advanceUntilIdle()
 
         alice.placeNode("k", "chair", at(1f), identity)
-        alice.removeNode("k")
         advanceUntilIdle()
 
-        // Sending either would only be rejected by every peer: the local view
-        // must not show what nobody else will.
-        assertEquals("bob", alice.placedNodes.single().ownerPeerId)
-        assertTrue(probe.nodeLines().isEmpty())
+        assertEquals("alice", alice.placedNodes.single().ownerPeerId)
+        assertEquals("chair", alice.placedNodes.single().modelKey)
+        assertEquals(1, probe.nodeLines().size)
     }
 
     @Test

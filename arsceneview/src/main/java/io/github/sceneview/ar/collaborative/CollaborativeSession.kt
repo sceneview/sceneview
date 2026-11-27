@@ -46,7 +46,8 @@ import kotlinx.coroutines.launch
  * Like [io.github.sceneview.ar.rerun.RerunBridge] this is a pluggable bridge:
  *
  * - A dedicated **supervisor [CoroutineScope]** owns all message I/O, so one
- *   failing job never tears the session down.
+ *   failing job never tears the session down. [stop] disposes that runtime;
+ *   a later [start] creates a fresh scope, queues, and collaborative state.
  * - The outbound queue never blocks the caller — [onFrame] may be called
  *   from the AR render loop. It keeps **one pending line per thing a peer
  *   must end up knowing**: the newest camera pose replaces the pose still
@@ -75,11 +76,25 @@ import kotlinx.coroutines.launch
  * a tie: last-writer-wins, the same on every device whatever order the lines
  * arrive in. A removed node stays removed when a placement written earlier
  * arrives late. [CollaborativeState] documents the order and its two limits:
- * peers that predate the counter are merged in arrival order, and only the
- * most recent [CollaborativeState.MAX_NODES] removals are remembered.
+ * peers that predate the counter are merged in arrival order. Tombstones stay
+ * memory-bounded, with an evicted-removal high-water mark preventing delayed
+ * placements from resurrecting keys whose tombstone was evicted. A remote
+ * counter jump more than 24 hours ahead is rejected, so `Long.MAX_VALUE`
+ * cannot lock a key against local writes.
  *
- * A device that joins late is **not** sent the nodes placed before it joined:
- * it sees a node at that node's next write.
+ * When [CollaborativeTransport.peers] gains a peer, one already-connected peer
+ * re-sends the shared anchor and at most [CollaborativeState.MAX_NODES] current
+ * nodes. Snapshot lines preserve the original writer/version, so joining does
+ * not become a new placement. The transport broadcasts rather than targets;
+ * deterministic leader selection prevents every existing peer replaying.
+ *
+ * ### Mixed versions (4.53.0 and older)
+ *
+ * Older peers ignore counters, removals, and late-join snapshot lines they do
+ * not understand. Their placements are accepted in arrival order for
+ * compatibility, so a key concurrently written by old and new peers is not
+ * guaranteed to converge; removals and pre-join state also remain visible or
+ * absent on the older peer until an ordinary placement reaches it.
  *
  * ### Security & trust model (#2569)
  *
@@ -135,7 +150,7 @@ public constructor(
     private val displayName: String = transport.localPeerId,
     private val poseRateHz: Int = DEFAULT_POSE_RATE_HZ,
     private val tag: String = "CollaborativeSession",
-    ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
 
     public companion object {
@@ -148,18 +163,13 @@ public constructor(
         private const val OUTBOX_ANCHOR = "anchor"
         private const val OUTBOX_POSE = "pose"
         private const val OUTBOX_NODE_PREFIX = "node:"
+        private const val OUTBOX_SNAPSHOT_PREFIX = "snapshot:"
 
         private const val MILLIS_PER_SECOND = 1000L
     }
 
     private val localPeerId: String = transport.localPeerId
-    private val state = CollaborativeState(localPeerId)
-
-    // All message I/O runs here. SupervisorJob so one failed send/merge job
-    // never cancels the whole session — same choice as RerunBridge.
-    // ioDispatcher is injected so unit tests can use a StandardTestDispatcher
-    // and advance the session on virtual time via advanceUntilIdle().
-    private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
+    private var state = CollaborativeState(localPeerId)
 
     // Guards the merged state and the publishes that follow a change.
     // placeNode / removeNode mutate it on the caller's thread while inbound
@@ -170,16 +180,20 @@ public constructor(
     // must end up knowing (see the OUTBOX_* slots). A newer line replaces only
     // the line in its own slot: the latest pose wins under backpressure, and a
     // placement, the anchor id or the hello is never dropped by a later line.
+    private val lifecycleLock = Any()
     private val outboxLock = Any()
-    private val outbox = LinkedHashMap<String, ByteArray>()
-    private val outboxSignal = Channel<Unit>(capacity = Channel.CONFLATED)
 
-    // Inbound lines in arrival order, drained by ONE coroutine: a launch per
-    // message on a multi-threaded dispatcher would apply two writes to the same
-    // key in either order, on maps that are not thread-safe.
-    private val inbox = Channel<Inbound>(capacity = Channel.UNLIMITED)
+    /** One disposable I/O generation. Recreated by every successful start(). */
+    private inner class Runtime {
+        val scope = CoroutineScope(ioDispatcher + SupervisorJob())
+        val outbox = LinkedHashMap<String, ByteArray>()
+        val outboxSignal = Channel<Unit>(capacity = Channel.CONFLATED)
+        val inbox = Channel<Inbound>(capacity = Channel.UNLIMITED)
+        var incomingHandle: AutoCloseable? = null
+        var knownPeers: Set<String> = emptySet()
+    }
 
-    private var incomingHandle: AutoCloseable? = null
+    @Volatile private var runtime: Runtime? = null
 
     @Volatile private var started = false
 
@@ -237,31 +251,56 @@ public constructor(
      * loop, and broadcasts a `hello`. Idempotent — a second call is a no-op.
      */
     public fun start() {
-        if (started) return
-        started = true
+        val run = synchronized(lifecycleLock) {
+            if (started) return
+            synchronized(stateLock) {
+                state = CollaborativeState(localPeerId)
+                publishParticipants()
+                publishNodes()
+                _sharedCloudAnchorId = null
+                sharedAnchorNode = null
+            }
+            synchronized(poseLock) {
+                poseWindowOpen = false
+                pendingPose = null
+            }
+            Runtime().also {
+                runtime = it
+                started = true
+            }
+        }
 
-        incomingHandle = transport.incoming { peerId, bytes -> onTransportMessage(peerId, bytes) }
+        run.incomingHandle = transport.incoming { peerId, bytes ->
+            onTransportMessage(run, peerId, bytes)
+        }
 
         // Drop participants whose transport link died.
         transport.peers
             .onEach { live ->
+                if (runtime !== run) return@onEach
+                val previous = run.knownPeers
+                val joined = live - previous
+                run.knownPeers = live
                 synchronized(stateLock) {
                     if (state.retainParticipants(live)) publishParticipants()
+                    if (joined.isNotEmpty() && localPeerId == (previous + localPeerId).min()) {
+                        enqueueStateReplay(run)
+                    }
                 }
             }
-            .launchIn(scope)
+            .launchIn(run.scope)
 
         // Reader loop — merges inbound lines one at a time, in arrival order.
-        scope.launch {
-            for (inbound in inbox) merge(inbound.peerId, inbound.bytes)
+        run.scope.launch {
+            for (inbound in run.inbox) merge(run, inbound.peerId, inbound.bytes)
         }
 
         // Writer loop — one wake-up drains every pending outbound line, so the
         // conflated signal never costs a line.
-        scope.launch {
-            while (outboxSignal.receiveCatching().isSuccess) {
+        run.scope.launch {
+            while (run.outboxSignal.receiveCatching().isSuccess) {
                 while (true) {
-                    val line = nextOutboundLine() ?: break
+                    val line = nextOutboundLine(run) ?: break
                     try {
                         transport.send(line)
                     } catch (e: Exception) {
@@ -271,7 +310,7 @@ public constructor(
             }
         }
 
-        enqueue(OUTBOX_HELLO, CollaborativeWireFormat.hello(localPeerId, displayName))
+        enqueue(run, OUTBOX_HELLO, CollaborativeWireFormat.hello(localPeerId, displayName))
     }
 
     /**
@@ -281,22 +320,26 @@ public constructor(
      * does it on dispose). Safe to call multiple times.
      */
     public fun stop() {
-        if (!started) return
-        started = false
+        val run = synchronized(lifecycleLock) {
+            if (!started) return
+            started = false
+            runtime.also { runtime = null }
+        } ?: return
         try {
             transport.send(CollaborativeWireFormat.bye(localPeerId).toByteArray())
         } catch (e: Exception) {
             logWarning("bye failed: ${e.message}")
         }
         try {
-            incomingHandle?.close()
+            run.incomingHandle?.close()
         } catch (e: Exception) {
             logWarning("unsubscribe failed: ${e.message}")
         }
-        incomingHandle = null
-        scope.cancel()
-        outboxSignal.close()
-        inbox.close()
+        run.incomingHandle = null
+        run.scope.cancel()
+        run.outboxSignal.close()
+        run.inbox.close()
+        synchronized(outboxLock) { run.outbox.clear() }
     }
 
     // ── Shared anchor — host / resolve ────────────────────────────────────
@@ -331,17 +374,22 @@ public constructor(
         val node = CloudAnchorNode(engine, anchor)
         sharedAnchorNode = node
         node.host(session, ttlDays) { cloudAnchorId, hostState ->
-            val ok = cloudAnchorId != null && !hostState.isError
-            if (ok && cloudAnchorId != null) {
-                _sharedCloudAnchorId = cloudAnchorId
+            val hostedId = cloudAnchorId?.takeUnless { hostState.isError }
+            if (hostedId != null) {
+                _sharedCloudAnchorId = hostedId
+                synchronized(stateLock) {
+                    state.applyLocal(
+                        CollaborativeMessage.SharedAnchor(localPeerId, hostedId, name),
+                    )
+                }
                 enqueue(
                     OUTBOX_ANCHOR,
-                    CollaborativeWireFormat.anchor(localPeerId, cloudAnchorId, name),
+                    CollaborativeWireFormat.anchor(localPeerId, hostedId, name),
                 )
             } else {
                 logWarning("host failed: $hostState")
             }
-            onHosted?.invoke(cloudAnchorId, ok)
+            onHosted?.invoke(cloudAnchorId, hostedId != null)
         }
     }
 
@@ -421,7 +469,7 @@ public constructor(
 
     /** [broadcastLocalPose] without the ARCore type, for JVM tests. */
     internal fun broadcastLocalPose(translation: FloatArray, quaternion: FloatArray) {
-        if (!started) return
+        val run = runtime ?: return
         // Checked here, where the caller can see it: a pose that waits is
         // serialized later, on the session scope.
         require(translation.size == 3) { "translation must have 3 components" }
@@ -430,7 +478,7 @@ public constructor(
         // when the device was there.
         val pose = PendingPose(epochMillis(), translation, quaternion)
         if (poseIntervalMillis <= 0L) {
-            enqueue(OUTBOX_POSE, pose.toLine())
+            enqueue(run, OUTBOX_POSE, pose.toLine())
             return
         }
         synchronized(poseLock) {
@@ -443,9 +491,9 @@ public constructor(
             poseWindowOpen = true
             // Queued under the lock, like the trailing pose below, so two
             // poses never reach the outbox in the wrong order.
-            enqueue(OUTBOX_POSE, pose.toLine())
+            enqueue(run, OUTBOX_POSE, pose.toLine())
         }
-        scope.launch {
+        run.scope.launch {
             while (true) {
                 delay(poseIntervalMillis)
                 synchronized(poseLock) {
@@ -455,7 +503,7 @@ public constructor(
                         poseWindowOpen = false
                         return@launch
                     }
-                    enqueue(OUTBOX_POSE, trailing.toLine())
+                    enqueue(run, OUTBOX_POSE, trailing.toLine())
                 }
             }
         }
@@ -562,16 +610,18 @@ public constructor(
 
     private class Inbound(val peerId: String, val bytes: ByteArray)
 
-    private fun onTransportMessage(peerId: String, bytes: ByteArray) {
+    private fun onTransportMessage(run: Runtime, peerId: String, bytes: ByteArray) {
         // Queued, never merged on the transport's thread: the reader loop is
         // the only place inbound state changes, so two lines cannot race or
         // swap. A no-op once stop() has closed the inbox.
-        inbox.trySend(Inbound(peerId, bytes))
+        run.inbox.trySend(Inbound(peerId, bytes))
     }
 
-    private fun merge(peerId: String, bytes: ByteArray) {
+    private fun merge(run: Runtime, peerId: String, bytes: ByteArray) {
+        if (runtime !== run) return
         val line = bytes.toString(Charsets.UTF_8)
-        val message = CollaborativeWireFormat.parse(line)
+        val snapshot = CollaborativeWireFormat.parseSnapshot(line)
+        val message = snapshot?.nodeState ?: CollaborativeWireFormat.parse(line)
         if (message == null) {
             logVerbose("dropped unparseable line from $peerId")
             return
@@ -582,15 +632,17 @@ public constructor(
         // is legitimately relayed on another peer's behalf, so a mismatch
         // is impersonation (forged pose, bye-eviction, roster flooding
         // under thousands of distinct forged keys) and is dropped whole.
-        if (message.peerId != peerId) {
+        val claimedTransportPeer = snapshot?.relayPeerId ?: message.peerId
+        if (claimedTransportPeer != peerId) {
             logWarning(
                 "dropped spoofed message: transport peer '$peerId' " +
-                    "claimed to be '${message.peerId}'",
+                    "claimed to be '$claimedTransportPeer'",
             )
             return
         }
         synchronized(stateLock) {
-            if (!state.apply(message)) return
+            if (runtime !== run) return
+            if (!state.applyRemote(message, epochMillis())) return
             publishParticipants()
             publishNodes()
             state.sharedAnchor?.let { _sharedCloudAnchorId = it.cloudAnchorId }
@@ -612,17 +664,44 @@ public constructor(
      * so the newest write of a slot is also the last one sent.
      */
     private fun enqueue(slot: String, line: String) {
-        val bytes = line.toByteArray(Charsets.UTF_8)
-        synchronized(outboxLock) {
-            outbox.remove(slot)
-            outbox[slot] = bytes
-        }
-        outboxSignal.trySend(Unit)
+        val run = runtime ?: return
+        enqueue(run, slot, line)
     }
 
-    private fun nextOutboundLine(): ByteArray? = synchronized(outboxLock) {
-        val pending = outbox.values.iterator()
+    private fun enqueue(run: Runtime, slot: String, line: String) {
+        val bytes = line.toByteArray(Charsets.UTF_8)
+        synchronized(outboxLock) {
+            run.outbox.remove(slot)
+            run.outbox[slot] = bytes
+        }
+        run.outboxSignal.trySend(Unit)
+    }
+
+    private fun nextOutboundLine(run: Runtime): ByteArray? = synchronized(outboxLock) {
+        val pending = run.outbox.values.iterator()
         if (pending.hasNext()) pending.next().also { pending.remove() } else null
+    }
+
+    /**
+     * Replays a bounded current-state snapshot when this peer is the
+     * deterministic leader among the peers that existed before the join.
+     */
+    private fun enqueueStateReplay(run: Runtime) {
+        enqueue(run, OUTBOX_HELLO, CollaborativeWireFormat.hello(localPeerId, displayName))
+        state.sharedAnchor?.let { anchor ->
+            enqueue(
+                run,
+                OUTBOX_ANCHOR,
+                CollaborativeWireFormat.anchor(localPeerId, anchor.cloudAnchorId, anchor.name),
+            )
+        }
+        state.nodeSnapshots(CollaborativeState.MAX_NODES).forEach { node ->
+            enqueue(
+                run,
+                OUTBOX_SNAPSHOT_PREFIX + node.nodeKey,
+                CollaborativeWireFormat.snapshot(localPeerId, node),
+            )
+        }
     }
 
     private fun logWarning(msg: String) {
@@ -639,6 +718,7 @@ public constructor(
      * merge path without a real ARCore session.
      */
     internal fun testOnlyReceive(peerId: String, line: String) {
-        onTransportMessage(peerId, line.toByteArray(Charsets.UTF_8))
+        val run = runtime ?: return
+        onTransportMessage(run, peerId, line.toByteArray(Charsets.UTF_8))
     }
 }
