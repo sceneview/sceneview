@@ -124,11 +124,25 @@ class ARSessionDependenciesTest {
         // Skip material loading and GPU allocation, retaining the renderer's real update/reset
         // methods and its real registry. Empty updated-plane lists never allocate GPU geometry.
         planes = allocateWithoutJni(PlaneRenderer::class.java)
+        val planeDepthOcclusion = allocateWithoutJni(
+            io.github.sceneview.ar.scene.PlaneDepthOcclusion::class.java
+        )
+        ReflectionHelpers.setField(
+            planeDepthOcclusion,
+            "filter",
+            io.github.sceneview.ar.depth.DepthOcclusionFilter(),
+        )
+        ReflectionHelpers.setField(
+            planeDepthOcclusion,
+            "mode",
+            com.google.ar.core.Config.DepthMode.DISABLED,
+        )
         visualizers = OwnedVisualizers(
             destroyVisualizer = { open(it) { releasedVisualizers++ } },
             destroyInstance = {},
         )
         ReflectionHelpers.setField(planes, "visualizers", visualizers)
+        ReflectionHelpers.setField(planes, "depthOcclusion", planeDepthOcclusion)
         planes.isEnabled = true
         planes.maxUpdatesPerSecond = 10
         arCore = ARCore({}, {}, {}, { failures += it }, { _, _ -> }).apply {

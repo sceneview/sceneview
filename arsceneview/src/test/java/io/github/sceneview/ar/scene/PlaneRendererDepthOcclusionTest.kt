@@ -45,7 +45,7 @@ class PlaneRendererDepthOcclusionTest {
         org.junit.Assert.assertEquals(listOf("su.occlusion"), writes)
         assertTrue(source.contains("arPlaneRenderer.isDepthOcclusionEnabled = planeDepthOcclusion"))
         val publicSignature = source.substringAfter("fun ARSceneView(").substringBefore("\n) {")
-        assertTrue(publicSignature.contains("depthMode: Config.DepthMode = Config.DepthMode.DISABLED"))
+        assertTrue(publicSignature.contains("depthMode: Config.DepthMode? = null"))
         assertTrue(publicSignature.contains("planeDepthOcclusion: Boolean = true"))
         val alias = source.substringAfter("fun ARScene(").substringBefore("\n) = ARSceneView(")
         assertTrue(alias.contains("planeDepthOcclusion: Boolean = true"))

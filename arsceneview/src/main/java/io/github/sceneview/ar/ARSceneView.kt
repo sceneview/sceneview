@@ -221,8 +221,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 to `OFF` (#1732).
  * @param planeFindingMode         Typed [Config.PlaneFindingMode] (#1766). Default
  *                                 `HORIZONTAL_AND_VERTICAL`.
- * @param depthMode                Typed [Config.DepthMode] (#1766). Default `DISABLED`.
- *                                 Support-gated.
+ * @param depthMode                Typed [Config.DepthMode] (#1766). `null` lets plane marks
+ *                                 request `AUTOMATIC` depth when [planeDepthOcclusion] is true
+ *                                 and the device supports it. Any explicit mode, including
+ *                                 `DISABLED`, wins. Depth processing uses additional compute
+ *                                 and battery. Support-gated.
  * @param instantPlacementMode     Typed [Config.InstantPlacementMode] (#1766). Default `DISABLED`.
  * @param geospatialMode           Typed [Config.GeospatialMode] (#1766). Default `DISABLED`.
  *                                 Requires ARCore Cloud API key + `ACCESS_FINE_LOCATION`.
@@ -434,6 +437,25 @@ internal class ChangeGate<T>(initial: T) {
     }
 }
 
+/**
+ * Resolves SceneView's plane-only depth default without changing an explicit app request.
+ *
+ * Device support only controls the implicit [Config.DepthMode.AUTOMATIC] default. Explicit modes
+ * are returned unchanged and remain subject to the central support downgrade in
+ * [io.github.sceneview.ar.arcore.configure].
+ */
+internal fun resolvePlaneDepthMode(
+    requestedDepthMode: Config.DepthMode?,
+    automaticDepthSupported: Boolean,
+    planeDepthOcclusion: Boolean,
+): Config.DepthMode = requestedDepthMode ?: if (
+    planeDepthOcclusion && automaticDepthSupported
+) {
+    Config.DepthMode.AUTOMATIC
+} else {
+    Config.DepthMode.DISABLED
+}
+
 // `planeRendererVersion` is deprecated and ignored; it only keeps old calls compiling.
 @Suppress("DEPRECATION", "UNUSED_PARAMETER", "UnusedParameter")
 @Composable
@@ -570,14 +592,16 @@ fun ARSceneView(
     /**
      * ARCore [Config.DepthMode] — enables motion-stereo depth so [Frame.acquireDepthImage16Bits],
      * `Frame.hitTestDepth`, [io.github.sceneview.ar.node.DepthMeshNode] and ARCameraStream
-     * occlusion all see real-world depth. Defaults to [Config.DepthMode.DISABLED] (ARCore's
-     * stock default — the depth pipeline is opt-in for power reasons). Support-gated — if
-     * the device does not support the requested mode, [ARSession.configure] silently downgrades
-     * to `DISABLED`. Pair with [Config.GeospatialMode.ENABLED] +
+     * occlusion all see real-world depth. `null` (default) requests [Config.DepthMode.AUTOMATIC]
+     * only when [planeDepthOcclusion] is true and the device supports it, so real objects hide
+     * plane marks out of the box. Depth processing uses additional compute and battery. Pass any
+     * mode explicitly, including [Config.DepthMode.DISABLED], to keep that exact request.
+     * Support-gated — if the device does not support the requested mode, [ARSession.configure]
+     * silently downgrades to `DISABLED`. Pair with [Config.GeospatialMode.ENABLED] +
      * [Config.StreetscapeGeometryMode.ENABLED] to unlock ARCore 1.54's Geospatial Depth (~65 m,
      * see #1731). Applied BEFORE [sessionConfiguration] (#1766).
      */
-    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    depthMode: Config.DepthMode? = null,
     /**
      * ARCore [Config.InstantPlacementMode] — places anchors before a plane has been found by
      * estimating the surface from screen-space cues. Defaults to
@@ -946,10 +970,13 @@ fun ARSceneView(
      */
     onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,
     /**
-     * Depth-occlude the plane marks when the configured session already provides depth.
-     * Defaults to true; false opts out for planes only. Does not change [depthMode],
-     * [sessionConfiguration], or [ARCameraStream.isDepthOcclusionEnabled] for app models.
-     * Unsupported/disabled depth and frames before the first depth image draw marks normally.
+     * Depth-occlude plane marks. Defaults to true and, when [depthMode] is `null`, requests
+     * [Config.DepthMode.AUTOMATIC] on supported devices. `false` opts out and leaves depth
+     * disabled when the app did not request a mode. Explicit [depthMode] and
+     * [sessionConfiguration] choices still win, and this never changes
+     * [ARCameraStream.isDepthOcclusionEnabled] for app models. Depth processing uses additional
+     * compute and battery. Unsupported/disabled depth and frames before the first depth image
+     * draw marks normally.
      */
     planeDepthOcclusion: Boolean = true,
     /**
@@ -1002,6 +1029,7 @@ fun ARSceneView(
     val sessionConfigurationRef = remember { AtomicReference(sessionConfiguration) }
     val sessionCameraConfigRef = remember { AtomicReference(sessionCameraConfig) }
     val flashModeRef = remember { AtomicReference(flashMode) }
+    val planeDepthOcclusionRef = remember { AtomicBoolean(planeDepthOcclusion) }
 
     // Typed Config.*Mode params (#1766) — applied BEFORE sessionConfiguration so the callback
     // still wins. Held in AtomicReferences for the same reactive update pattern as flashMode.
@@ -1030,6 +1058,7 @@ fun ARSceneView(
         sessionConfigurationRef.set(sessionConfiguration)
         sessionCameraConfigRef.set(sessionCameraConfig)
         flashModeRef.set(flashMode)
+        planeDepthOcclusionRef.set(planeDepthOcclusion)
         planeFindingModeRef.set(planeFindingMode)
         depthModeRef.set(depthMode)
         instantPlacementModeRef.set(instantPlacementMode)
@@ -1227,9 +1256,17 @@ fun ARSceneView(
                     config.flashMode = flashModeRef.get() ?: Config.FlashMode.OFF
                     config.planeFindingMode = planeFindingModeRef.get()
                         ?: Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    // depthMode support-gating is already centralised inside ArSession.configure
-                    // (auto-downgrades unsupported requests to DISABLED).
-                    config.depthMode = effectiveRequestedDepthMode ?: Config.DepthMode.DISABLED
+                    // An omitted mode enables plane-only depth by default when ARCore supports
+                    // it. Explicit typed modes remain untouched, and the callback below still
+                    // wins (including an explicit DISABLED). Final support-gating stays
+                    // centralised inside ArSession.configure.
+                    config.depthMode = resolvePlaneDepthMode(
+                        requestedDepthMode = effectiveRequestedDepthMode,
+                        automaticDepthSupported = session.isDepthModeSupported(
+                            Config.DepthMode.AUTOMATIC
+                        ),
+                        planeDepthOcclusion = planeDepthOcclusionRef.get(),
+                    )
                     config.instantPlacementMode = instantPlacementModeRef.get()
                         ?: Config.InstantPlacementMode.DISABLED
                     config.geospatialMode = geospatialModeRef.get() ?: Config.GeospatialMode.DISABLED
@@ -1391,12 +1428,22 @@ fun ARSceneView(
             session.configure { config -> config.planeFindingMode = planeFindingMode }
         }
     }
-    val depthModeGate = remember { ChangeGate(depthMode) }
-    LaunchedEffect(depthMode) {
-        if (!depthModeGate.shouldApply(depthMode)) return@LaunchedEffect
+    val depthModeGate = remember { ChangeGate(depthMode to planeDepthOcclusion) }
+    LaunchedEffect(depthMode, planeDepthOcclusion) {
+        if (!depthModeGate.shouldApply(depthMode to planeDepthOcclusion)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
-        if (session.config.depthMode != depthMode) {
-            session.configure { config -> config.depthMode = depthMode }
+        val resolvedDepthMode = resolvePlaneDepthMode(
+            requestedDepthMode = depthMode,
+            automaticDepthSupported = session.isDepthModeSupported(Config.DepthMode.AUTOMATIC),
+            planeDepthOcclusion = planeDepthOcclusion,
+        )
+        if (session.config.depthMode != resolvedDepthMode) {
+            session.configure { config ->
+                config.depthMode = resolvedDepthMode
+                // With no typed request, replay the escape hatch after the adaptive default so
+                // callback-driven modes — especially an explicit DISABLED — keep precedence.
+                if (depthMode == null) sessionConfigurationRef.get()?.invoke(session, config)
+            }
         }
     }
     val instantPlacementModeGate = remember { ChangeGate(instantPlacementMode) }
@@ -2666,7 +2713,10 @@ private fun ARScenePreview(modifier: Modifier) {
 
 /**
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
- * compatibility with code written against earlier SceneView versions.
+ * compatibility with code written against earlier SceneView versions. It shares ARSceneView's
+ * adaptive plane-depth default: supported devices use `AUTOMATIC` unless
+ * [planeDepthOcclusion] is false or [sessionConfiguration] selects another mode, including
+ * `DISABLED`; enabling depth adds compute and battery cost.
  */
 @Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Suppress("DEPRECATION")
@@ -2776,7 +2826,7 @@ fun ARSceneView(
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
-    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    depthMode: Config.DepthMode? = null,
     instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
     geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
     streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,
@@ -2910,7 +2960,7 @@ fun ARSceneView(
     sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
-    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    depthMode: Config.DepthMode? = null,
     instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
     geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
     streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,

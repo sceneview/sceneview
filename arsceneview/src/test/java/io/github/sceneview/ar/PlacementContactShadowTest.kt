@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ContactShadowContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -61,8 +62,8 @@ class PlacementContactShadowTest {
     private val sofaHalfX = 87f * 0.0254f / 2f
     private val sofaHalfZ = 37f * 0.0254f / 2f
 
-    @Test fun `the shadow is on by default`() {
-        assertTrue(AutoPlacementState().showsContactShadow)
+    @Test fun `the shadow is off by default`() {
+        assertFalse(AutoPlacementState().showsContactShadow)
     }
 
     @Test fun `the pool is centred under the footprint`() {

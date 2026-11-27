@@ -589,7 +589,7 @@ fun ARSceneView(
     flashMode: Config.FlashMode = Config.FlashMode.OFF,  // ARCore v1.45+ Flash Mode — OFF/TORCH. Reactive; unsupported devices/front-camera silently downgrade to OFF (#1732).
     // Typed Config.*Mode DSL params (#1766) — applied BEFORE sessionConfiguration so the callback still wins. All reactive.
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
-    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,                                   // Support-gated; auto-downgrades to DISABLED.
+    depthMode: Config.DepthMode? = null,  // null enables AUTOMATIC for plane marks when supported; any explicit mode wins. Support-gated.
     instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
     geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,                    // Needs Cloud key + ACCESS_FINE_LOCATION.
     streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,  // Needs geospatialMode = ENABLED.
@@ -634,7 +634,7 @@ fun ARSceneView(
     arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
     onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: recovery, permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
-    planeDepthOcclusion: Boolean = true,  // Plane marks only, when depth is already configured. Does not enable depth or change model occlusion. false opts out.
+    planeDepthOcclusion: Boolean = true,  // Plane marks only. With depthMode = null, supported devices enable AUTOMATIC; false keeps implicit depth off. Never changes model occlusion.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -827,10 +827,6 @@ Named constants: `SceneUnderstanding.Full` (everything on), `SceneUnderstanding.
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
     sceneUnderstanding = SceneUnderstanding.Full,
-    sessionConfiguration = { _, config ->
-        // Occlusion still needs DepthMode opt-in — SceneView does NOT auto-set this.
-        config.depthMode = Config.DepthMode.AUTOMATIC
-    }
 ) { /* ... */ }
 ```
 
@@ -923,15 +919,19 @@ Marks are spaced 0.10 m apart on orthonormal axes along each surface, including 
 `ARSceneView` (and the deprecated `ARScene` alias) depth-occludes its plane marks by default
 when the **effective session configuration** enables `AUTOMATIC` or `RAW_DEPTH_ONLY` depth.
 The marks sample depth in their own material; the camera stream's model occlusion stays under
-app control. `depthMode` still defaults to `DISABLED`: automatically starting the depth pipeline
-would change the app's power use and explicit configuration. The `sessionConfiguration`
-callback retains precedence, and unsupported devices fall back to unoccluded marks. Before the
-first depth image, marks remain visible; disabling depth or switching sessions drops old depth.
+app control. With no explicit depth mode and `planeDepthOcclusion = true`, a supported device
+enables `AUTOMATIC` by default, which adds ARCore depth-processing and battery cost. Any explicit
+mode, including `DISABLED`, and the later `sessionConfiguration` callback retain precedence;
+`planeDepthOcclusion = false` keeps depth off when the app did not request it. Unsupported devices
+remain disabled and draw unoccluded marks. Before the first depth image, marks remain visible;
+disabling depth or switching sessions drops old depth.
 
 ```kotlin
-// Depth-occluded plane dots; models keep their existing occlusion behaviour.
-ARSceneView(depthMode = Config.DepthMode.AUTOMATIC) { /* AR nodes */ }
-// Keep depth for hit tests, but opt out of the plane material's depth test.
+// Depth-occluded plane dots on supported devices; models keep their existing occlusion behaviour.
+ARSceneView { /* AR nodes */ }
+// Opt out without starting depth when the app has not requested it.
+ARSceneView(planeDepthOcclusion = false) { /* AR nodes */ }
+// Keep explicitly requested depth for hit tests, but opt out of the plane material's depth test.
 ARSceneView(depthMode = Config.DepthMode.AUTOMATIC, planeDepthOcclusion = false) { /* AR nodes */ }
 ```
 
