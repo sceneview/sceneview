@@ -172,9 +172,10 @@ import io.github.sceneview.node.setEnvironmentLight
  *                            selection. Compute with `Model.animationEnvelope`, then transform by
  *                            the model node's world transform after centering/scaling.
  * @param fitMode              Points fitted by [autoFitContent]. Automatic (`null`) selects
- *                              [FitMode.Silhouette] and the playing clips' envelope (or all clips,
- *                              up to eight) when every rendered model is skinned and animated and
- *                              nothing else renders; [FitMode.Corners] otherwise. Pass
+ *                              [FitMode.Silhouette] and the playing clip's envelope (or all clips
+ *                              sampled separately, up to eight, when none plays) when every
+ *                              rendered model is skinned and animated and nothing else renders.
+ *                              Concurrent playback and other content use [FitMode.Corners]. Pass
  *                              [FitMode.Corners] to opt out.
  * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
  *                              *fraction* of the fit distance — `0.15` (the default,
@@ -386,8 +387,8 @@ fun SceneView(
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
     /**
      * `null` automatically uses silhouette fitting and sampled clip envelopes only when all
-     * rendered content is skinned and animated; otherwise it uses corners. Pass
-     * [FitMode.Corners] to opt out of automatic selection.
+     * rendered content is skinned and animated and at most one clip is playing per model;
+     * otherwise it uses corners. Pass [FitMode.Corners] to opt out of automatic selection.
      */
     fitMode: FitMode? = null,
     /** Overrides the computed world-space envelope without disabling automatic mode selection. */

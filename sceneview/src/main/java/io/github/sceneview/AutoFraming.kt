@@ -9,8 +9,22 @@ import io.github.sceneview.node.RenderableNode
 internal const val MAX_AUTO_FIT_CLIPS = 8
 private const val AUTO_FIT_SAMPLES = 24
 
-internal fun resolveAutoFitMode(qualifyingModels: Int, hasStaticContent: Boolean): FitMode =
-    if (qualifyingModels > 0 && !hasStaticContent) FitMode.Silhouette else FitMode.Corners
+internal fun resolveAutoFitMode(
+    qualifyingModels: Int,
+    hasStaticContent: Boolean,
+    hasConcurrentPlayback: Boolean = false,
+): FitMode = if (qualifyingModels > 0 && !hasStaticContent && !hasConcurrentPlayback) {
+    FitMode.Silhouette
+} else {
+    FitMode.Corners
+}
+
+internal fun hasConcurrentPlayback(playing: Collection<Int>, animationCount: Int): Boolean =
+    playing.asSequence()
+        .filter { it in 0 until animationCount }
+        .distinct()
+        .take(2)
+        .count() > 1
 
 internal fun autoFitClips(
     playing: Collection<Int>,
@@ -83,7 +97,13 @@ internal fun resolveAutoFraming(
     }
     contentRoots.forEach { visit(it) }
 
-    val mode = resolveAutoFitMode(qualifying.size, hasStaticContent)
+    // Separate clip envelopes cannot represent the composed pose that Filament produces by
+    // applying several clips in sequence. Keep the live, already-composed renderable bounds and
+    // their conservative corner fit instead of replacing them with an unsafe analytic envelope.
+    val concurrentPlayback = qualifying.any {
+        hasConcurrentPlayback(it.playingAnimations.keys, it.animationCount)
+    }
+    val mode = resolveAutoFitMode(qualifying.size, hasStaticContent, concurrentPlayback)
     if (mode != FitMode.Silhouette || !computeEnvelope) return AutoFraming(mode, null)
     val envelopes = qualifying.mapNotNull { modelNode ->
         runCatching {

@@ -19,6 +19,28 @@ class AutoFramingTest {
         assertEquals(FitMode.Corners, resolveAutoFitMode(1, hasStaticContent = true))
         assertEquals(FitMode.Silhouette, resolveAutoFitMode(1, hasStaticContent = false))
         assertEquals(FitMode.Silhouette, resolveAutoFitMode(3, hasStaticContent = false))
+        assertEquals(
+            FitMode.Corners,
+            resolveAutoFitMode(
+                1, hasStaticContent = false, hasConcurrentPlayback = true
+            )
+        )
+    }
+
+    @Test
+    fun `concurrent clips fall back to the measured composed pose`() {
+        // Independent envelopes would only see each +10 translation, while Filament composes a
+        // parent and child clip to +20. The automatic path must not select that unsafe envelope.
+        assertTrue(hasConcurrentPlayback(listOf(0, 1), animationCount = 2))
+        assertEquals(
+            FitMode.Corners,
+            resolveAutoFitMode(
+                qualifyingModels = 1,
+                hasStaticContent = false,
+                hasConcurrentPlayback = hasConcurrentPlayback(listOf(0, 1), 2),
+            )
+        )
+        assertTrue(!hasConcurrentPlayback(listOf(0, 0, -1, 9), animationCount = 2))
     }
 
     @Test

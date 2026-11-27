@@ -617,9 +617,10 @@ class SceneAutoFitState {
      * @param cameraNode   Camera to reposition.
      * @param contentRoot  Subtree whose bounds drive the framing.
      * @param padding      Extra framing margin — see [fitDistanceForBounds].
-     * @param fitMode      `null` selects [FitMode.Silhouette] plus the playing clips' envelope (or
-     *                     all clips, up to eight) when every rendered model is skinned and animated
-     *                     and nothing else renders; otherwise [FitMode.Corners]. Pass
+     * @param fitMode      `null` selects [FitMode.Silhouette] plus the playing clip's envelope (or
+     *                     all clips sampled separately, up to eight, when none plays) when every
+     *                     rendered model is skinned and animated and nothing else renders.
+     *                     Concurrent playback and other content use [FitMode.Corners]. Pass
      *                     [FitMode.Corners] to opt out. An explicit mode keeps the raw-box path.
      * @param animationEnvelope Optional world-space poses replacing the automatically computed
      *                          envelope. With automatic mode this does not change how the mode is
@@ -667,7 +668,18 @@ class SceneAutoFitState {
         val framingKey = if (cameraNode.clipToContentPadding) {
             cameraNode.contentPadding to cameraNode.getViewPortAspect()
         } else cameraNode.contentPadding
-        if (gate.rearmOnChange(Triple(framingKey, fitMode, animationEnvelope))) fitDistance = 0f
+        // An automatically computed envelope follows the content in world space. Auto-centering
+        // can move that content while leaving the envelope diagonal unchanged, so include those
+        // positions in the latch key until they settle. Explicit envelopes remain caller-owned.
+        val automaticContentPositions = if (fitMode == null && animationEnvelope == null) {
+            contentRoots.map { it.worldPosition }
+        } else {
+            null
+        }
+        val autoFitKey = AutoFitFramingKey(
+            framingKey, fitMode, animationEnvelope, automaticContentPositions
+        )
+        if (gate.rearmOnChange(autoFitKey)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
         // Resolve automatic mode only after the gate admits this frame. In particular, do not
         // sample envelopes after a settled gate has latched, and never put the newly allocated
@@ -748,3 +760,10 @@ class SceneAutoFitState {
         fitDistance = 0f
     }
 }
+
+internal data class AutoFitFramingKey(
+    val viewport: Any,
+    val fitMode: FitMode?,
+    val animationEnvelope: AnimationEnvelope?,
+    val automaticContentPositions: List<Position>?,
+)

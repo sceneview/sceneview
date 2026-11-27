@@ -20,6 +20,23 @@ class CameraFramingTest {
     private fun box(extentX: Float, extentY: Float, extentZ: Float, center: Position = Position()) =
         Aabb(center = center, halfExtent = Position(extentX / 2f, extentY / 2f, extentZ / 2f))
 
+    @Test
+    fun automaticEnvelopeRearmsWhenAutoCenterMovesContent() {
+        val gate = FramingGate()
+        val first = AutoFitFramingKey("viewport", null, null, listOf(Position()))
+        gate.rearmOnChange(first)
+        gate.recordFraming(2f)
+        gate.recordFraming(2f)
+        assertTrue("the initial fit should have latched", gate.latched)
+
+        val centered = first.copy(automaticContentPositions = listOf(Position(0f, 1f, 0f)))
+        assertTrue(
+            "a world-space auto-center move must re-arm an otherwise stable envelope",
+            gate.rearmOnChange(centered),
+        )
+        assertTrue("the camera fit must remain active until centering settles", !gate.latched)
+    }
+
     // ── verticalFovDegreesForFocalLength ──────────────────────────────────────────────────────
 
     @Test

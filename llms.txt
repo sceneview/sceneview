@@ -452,7 +452,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
-    fitMode: FitMode? = null, // auto-fit points; null = Silhouette + clip envelope for skinned animated models, Corners otherwise
+    fitMode: FitMode? = null, // null = Silhouette + clip envelope; concurrent clips and other content use Corners
     animationEnvelope: AnimationEnvelope? = null, // world-space poses overriding the automatic envelope
     contentPadding: PaddingValues = PaddingValues(0.dp),   // animate this, never resize the composable
     clipToContentPadding: Boolean = false,                 // opaque cover only: skip hidden pixels
@@ -5428,12 +5428,14 @@ Auto-fit uses the camera's current direction in Silhouette mode and re-arms when
 
 **Automatic auto-fit for animated characters (Android, #5032).** With `autoFitContent = true`
 and `fitMode = null` (the default), auto-fit uses `FitMode.Silhouette` plus the envelope of
-the highest-precedence playing clips (all clips when none is playing, at most the last 8 applied,
+the playing clip (all clips sampled separately when none is playing, at most the last 8,
 24 samples each) when every
 model in the content is **skinned and animated** (`skinCount > 0`, `animationCount > 0`) and
 nothing else renders. Any static model or geometry in the content keeps `FitMode.Corners`, so
-a box-shaped product is never cropped. Pass `fitMode = FitMode.Corners` to opt out; pass an
-explicit `animationEnvelope` to replace the computed one.
+a box-shaped product is never cropped. When several clips play concurrently, their tracks are
+composed by Filament; auto-fit therefore uses `FitMode.Corners` on the measured composed pose
+instead of underestimating it with separate envelopes. Pass `fitMode = FitMode.Corners` to opt
+out; pass an explicit `animationEnvelope` to replace the computed one.
 
 ```kotlin
 // A rigged, animated character: Silhouette + its clips' envelope, nothing to configure.

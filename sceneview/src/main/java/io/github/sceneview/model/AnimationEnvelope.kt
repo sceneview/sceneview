@@ -68,8 +68,9 @@ private fun Aabb.toBox() = Box(center.x, center.y, center.z, halfExtent.x, halfE
  * data-URI accessors), or a parse/sample failure returns only [restPoseBoundingBox]. Models made
  * outside `ModelLoader` also fall back; that case reads Filament's box and requires the main thread.
  * `SceneView(autoFitContent = true)` automatically selects this envelope and silhouette fitting
- * when every rendered model is skinned and animated and no other content renders. Pass
- * `FitMode.Corners` to opt out of that automatic selection.
+ * when every rendered model is skinned and animated, no other content renders, and at most one
+ * clip plays per model. Concurrent clips instead use their measured composed pose and corners.
+ * Pass `FitMode.Corners` to opt out of automatic selection.
  */
 fun Model.animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope =
     AnimationEnvelopes[this]?.envelope(clip, samples) ?: AnimationEnvelope(listOf(restPoseBoundingBox))

@@ -5,8 +5,9 @@ import io.github.sceneview.math.Position
 /**
  * Chooses which points of a bounding box [fitCameraToBounds] fits to the viewport.
  * Raw-box framing defaults to [Corners]. `SceneView(autoFitContent = true)` instead infers
- * [Silhouette] plus an animation envelope when every rendered model is skinned and animated and
- * no other content renders; it uses [Corners] otherwise. Pass [Corners] explicitly to opt out.
+ * [Silhouette] plus an animation envelope when every rendered model is skinned and animated, no
+ * other content renders, and at most one clip plays per model; it uses [Corners] otherwise. Pass
+ * [Corners] explicitly to opt out.
  */
 enum class FitMode {
     /** All eight box corners: the unchanged fit, suitable for box-shaped products. */
