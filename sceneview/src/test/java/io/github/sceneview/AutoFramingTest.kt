@@ -22,12 +22,21 @@ class AutoFramingTest {
     }
 
     @Test
-    fun `playing clips win are validated sorted and capped`() {
-        assertEquals(listOf(1, 2, 4), autoFitClips(listOf(4, 2, 9, -1, 1), 5))
-        assertEquals((0 until 8).toList(), autoFitClips(emptyList(), 12))
-        assertEquals(listOf(1, 2), autoFitClips(listOf(2, 1), 5, max = 2))
+    fun `playing clips win are validated and capped by playback precedence`() {
+        assertEquals(listOf(4, 2, 1), autoFitClips(listOf(4, 2, 9, -1, 1), 5))
+        assertEquals((4 until 12).toList(), autoFitClips(emptyList(), 12))
+        assertEquals(listOf(2, 1), autoFitClips(listOf(2, 1), 5, max = 2))
         assertTrue(autoFitClips(emptyList(), 0).isEmpty())
         assertTrue(autoFitClips(listOf(0), 0).isEmpty())
+    }
+
+    @Test
+    fun `clip cap keeps the last applied pose controller`() {
+        val clips = autoFitClips(emptyList(), animationCount = 9)
+
+        assertEquals(MAX_AUTO_FIT_CLIPS, clips.size)
+        assertEquals((1..8).toList(), clips)
+        assertTrue(clips.contains(8))
     }
 
     @Test

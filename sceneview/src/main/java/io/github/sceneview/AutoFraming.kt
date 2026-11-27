@@ -19,12 +19,13 @@ internal fun autoFitClips(
 ): List<Int> {
     if (animationCount <= 0 || max <= 0) return emptyList()
     val source = playing.takeIf { it.isNotEmpty() } ?: (0 until animationCount).toList()
-    return source.asSequence()
+    val valid = source.asSequence()
         .filter { it in 0 until animationCount }
         .distinct()
-        .sorted()
-        .take(max)
         .toList()
+    // ModelNode applies clips in map iteration order, so later clips have the final say when
+    // several clips target the same joints. Keep that tail when the sampling budget is capped.
+    return valid.takeLast(max)
 }
 
 internal fun mergeEnvelopes(envelopes: List<AnimationEnvelope>): AnimationEnvelope? {
