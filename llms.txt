@@ -912,7 +912,7 @@ specific to Android's ARCore/Filament camera stream.
 | `VERTICAL`                   | wall             | upright blue dashes on staggered rows  |
 | `HORIZONTAL_DOWNWARD_FACING` | ceiling          | hollow warm rings, the quietest        |
 
-Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user; a soft dark halo around every mark (material parameter `contrast`, 0.80 by default) keeps it readable over a white wall or a sunlit floor. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted by brightness only; marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and only `TRACKING` planes with `subsumedBy == null` are drawn. Invalid planes are removed every frame, including during the visibility fade. Geometry and discovery are refreshed from all session planes at 10 Hz, so an update between polls is not lost.
+Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user. Default plane visuals draw only light marks: `surfaceAlpha = 0`, `contrast = 0`, and `PlaneRenderer.isShadowReceiver = false`. There is no polygon fill, dark halo or automatic shadow catcher. Focus brightens the marks themselves, leaving the gaps clear. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted by brightness only; marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and only `TRACKING` planes with `subsumedBy == null` are drawn. Invalid planes are removed every frame, including during the visibility fade. Geometry and discovery are refreshed from all session planes at 10 Hz, so an update between polls is not lost.
 
 Marks are spaced 0.10 m apart on orthonormal axes along each surface, including tilted planes; floor dots have a 0.009 m radius. Focus and reveal never change their dimensions. The mesh and its feather stay inside the tracked convex polygon; nearer dots naturally appear larger in perspective. No reticle ring is drawn by the plane material.
 
@@ -924,7 +924,10 @@ enables `AUTOMATIC` by default, which adds ARCore depth-processing and battery c
 mode, including `DISABLED`, and the later `sessionConfiguration` callback retain precedence;
 `planeDepthOcclusion = false` keeps depth off when the app did not request it. Unsupported devices
 remain disabled and draw unoccluded marks. Before the first depth image, marks remain visible;
-disabling depth or switching sessions drops old depth.
+disabling depth or switching sessions drops old depth. Toggling only `planeDepthOcclusion` never
+reconfigures an explicit typed depth mode, preserving the callback-selected effective mode.
+Plane-only depth acquisition, filtering and texture uploads stop when the last mark finishes
+fading, and resume when marks return; app depth and camera-stream occlusion remain configured.
 
 ```kotlin
 // Depth-occluded plane dots on supported devices; models keep their existing occlusion behaviour.
@@ -2605,7 +2608,7 @@ shadows, never casts; `shadowIntensity` in `0..1` (default 0.6 = Depth Lab) tuna
 
 ```kotlin
 ARSceneView(
-    planeRenderer = false, // its own shadow receiver would stack with the catchers (#2657)
+    planeRenderer = false, // fade discovery marks when showing the explicit shadow catchers
     onSessionCreated = { arSession = it },
 ) {
     val detectedPlanes by rememberDetectedPlanes(session = arSession)
@@ -2616,11 +2619,10 @@ ARSceneView(
 }
 ```
 
-Never keep `ShadowReceiverPlane`s AND `planeRenderer = true` live on the same plane — the plane
-renderer attaches its own coplanar shadow receiver, so stacking both z-fights and double-darkens
-shadows (#2657). Gate them mutually exclusively (grid while scanning, shadow receivers after
-placement), or just use `PlacementScene(groundShadows = true)`, which enforces the exclusion
-for you.
+The plane renderer does not receive shadows by default. If you explicitly enable
+`PlaneRenderer.isShadowReceiver`, do not also attach a `ShadowReceiverPlane` to the same plane:
+the coplanar receivers can z-fight and double-darken shadows (#2657).
+`PlacementScene(groundShadows = true)` manages the explicit receiver after placement for you.
 
 Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `ENVIRONMENTAL_HDR` light estimation provides one; diagnose the estimated main light's

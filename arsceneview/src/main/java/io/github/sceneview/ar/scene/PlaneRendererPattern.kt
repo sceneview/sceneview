@@ -6,6 +6,13 @@ import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.normalize
 import kotlin.math.abs
 
+/** Default discovery visuals contain marks only, with no fill, dark halo or shadow mesh. */
+internal object PlaneVisualDefaults {
+    const val SURFACE_ALPHA = 0f
+    const val CONTRAST = 0f
+    const val SHADOW_RECEIVER = false
+}
+
 /** Physical dimensions and orthonormal world-space axes uploaded to plane_renderer.mat. */
 internal object PlanePattern {
     const val SPACING_METRES = 0.10f

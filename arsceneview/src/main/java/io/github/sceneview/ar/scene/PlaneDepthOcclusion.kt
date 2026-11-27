@@ -69,6 +69,10 @@ internal class PlaneDepthOcclusion(private val engine: Engine) {
     }
 
     fun update(session: Session, frame: Frame, enabled: Boolean) {
+        if (!enabled) {
+            if (mode != Config.DepthMode.DISABLED) reset()
+            return
+        }
         val config = session.config
         val nextMode = config.depthMode.takeIf { shouldOccludePlanes(it, enabled) }
             ?: Config.DepthMode.DISABLED

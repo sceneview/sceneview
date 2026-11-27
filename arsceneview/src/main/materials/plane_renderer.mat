@@ -12,12 +12,8 @@
 //                 1 — wall           : upright dashes on a staggered lattice, pointing up the
 //                                      wall, the way a plumb line hangs;
 //                 2 — ceiling        : hollow rings, quieter.
-//             - Each mark sits in a soft dark halo (`contrast`): a
-//               white dot disappears on a sunlit floor or a white wall, the halo keeps its
-//               outline; on a dark floor the halo is invisible and costs nothing.
-//               The view tone-maps with ToneMapper.Filmic, which flattens everything near
-//               white: a halo at 0.55 came out 10 % darker than a white wall, and a light
-//               blue came out white. Hence a strong halo (0.80) and deep tints.
+//             - Default visuals contain only light marks, with no fill or dark halo.
+//               Apps can explicitly opt into a film (`surfaceAlpha`) or halo (`contrast`).
 //             - The marks fade out towards the polygon edge (per-vertex ramp carried in local
 //               Y), with distance from the camera, and into an even tone where they get
 //               smaller than a pixel (no moiré at grazing angles).
@@ -226,10 +222,9 @@ fragment {
         float opacity = clamp(materialParams.opacity, 0.0, 1.0);
         float fade = edgeFade * distanceFade * reveal * depthVisibility();
 
-        // Light: what the mark, the film and the reticle add to the camera image.
-        float light = markMask * materialParams.gridAlpha * emphasis * (1.0 + front)
-            + materialParams.surfaceAlpha * emphasis
-            + spot * 0.05;
+        // Focus brightens the marks themselves, never a polygon-wide pool between them.
+        float light = markMask * (materialParams.gridAlpha * emphasis * (1.0 + front)
+            + spot * 0.05) + materialParams.surfaceAlpha * emphasis;
         light *= fade;
         light = clamp(light * opacity, 0.0, 1.0);
 

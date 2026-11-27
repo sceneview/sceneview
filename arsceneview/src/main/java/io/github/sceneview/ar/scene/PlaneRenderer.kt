@@ -39,8 +39,8 @@ import kotlin.math.min
  *   fade out at the plane's edges and with distance.
  * - **Reveal.** A new surface is revealed by a bright front sweeping out from its centre, and
  *   each extension ARCore makes is revealed the same way.
- * - **Focus.** The floor under the centre of the screen is highlighted: brighter marks, a pool
- *   of light where the camera points, without changing mark size or drawing a reticle ring.
+ * - **Focus.** The marks under the centre of the screen become brighter, without changing
+ *   their size or filling the gaps.
  * - **Only real surfaces.** A plane smaller than [isPlaneLargeEnough] allows is not drawn until
  *   it grows: ARCore reports many short-lived slivers on bags, door edges and furniture fronts.
  *
@@ -103,8 +103,8 @@ class PlaneRenderer(
             setParameter(MATERIAL_SURFACE_KIND, PlaneSurfaceKind.FLOOR.shaderValue)
             setParameter(MATERIAL_GRID_TINT, DEFAULT_MARK_TINT)
             setParameter(MATERIAL_GRID_ALPHA, DEFAULT_MARK_ALPHA)
-            setParameter(MATERIAL_SURFACE_ALPHA, DEFAULT_SURFACE_ALPHA)
-            setParameter(MATERIAL_CONTRAST, DEFAULT_CONTRAST)
+            setParameter(MATERIAL_SURFACE_ALPHA, PlaneVisualDefaults.SURFACE_ALPHA)
+            setParameter(MATERIAL_CONTRAST, PlaneVisualDefaults.CONTRAST)
             // "Fully revealed, fully visible, not focused" — each plane animates its own
             // instance from there.
             setParameter(MATERIAL_SCAN_PROGRESS, 1.0f)
@@ -198,11 +198,12 @@ class PlaneRenderer(
         }
 
     /**
-     * Control whether Renderables in the scene should cast shadows onto the planes
+     * Control whether Renderables in the scene should cast shadows onto the planes.
+     * Defaults to false: discovery marks must not add a dark polygon beneath app content.
      *
      * If false - no planes receive shadows, regardless of the per-plane setting.
      */
-    override var isShadowReceiver = true
+    override var isShadowReceiver = PlaneVisualDefaults.SHADOW_RECEIVER
         set(value) {
             if (field != value) {
                 field = value
@@ -242,7 +243,6 @@ class PlaneRenderer(
         // disabled and between geometry updates so stale planes cannot linger through a fade.
         isCameraTracking = frame.camera.isTracking
         cleanupOldPlaneVisualizer()
-        depthOcclusion.update(session, frame, isDepthOcclusionEnabled && isCameraTracking)
         if (isEnabled && frame.fps(this.frame) < maxUpdatesPerSecond) {
             this.frame = frame
             try {
@@ -257,7 +257,18 @@ class PlaneRenderer(
         // Every frame, enabled or not: planes keep fading out after `isEnabled = false`.
         val now = System.nanoTime()
         val visualizerList = visualizers.visualizerList
-        for (i in visualizerList.indices) visualizerList[i].tick(now)
+        var hasVisibleMarks = false
+        for (i in visualizerList.indices) {
+            val visualizer = visualizerList[i]
+            visualizer.tick(now)
+            if (visualizer.hasVisibleMarks) hasVisibleMarks = true
+        }
+        // Evaluate after discovery and fading: acquire on the first visible frame, then stop
+        // as soon as the final mark disappears. Shadow-only meshes do not sample this texture.
+        depthOcclusion.update(
+            session, frame,
+            isDepthOcclusionEnabled && isCameraTracking && hasVisibleMarks,
+        )
     }
 
     /**
@@ -361,13 +372,12 @@ class PlaneRenderer(
         /** Float peak opacity of a mark. Set per plane type by the visualizer. */
         const val MATERIAL_GRID_ALPHA = "gridAlpha"
 
-        /** Float opacity of the faint film between the marks. */
+        /** Float opacity of the film between the marks. Zero by default (no fill). */
         const val MATERIAL_SURFACE_ALPHA = "surfaceAlpha"
 
         /**
-         * Float in `[0, 1]`: opacity of the soft dark halo around each mark and around the
-         * mark. The halo is what keeps a white dot readable on a sunlit floor or a
-         * white wall; `0` removes it.
+         * Float in `[0, 1]`: opacity of the soft dark halo around each mark.
+         * Defaults to `0` (no dark halo).
          */
         const val MATERIAL_CONTRAST = "contrast"
 
@@ -395,8 +405,6 @@ class PlaneRenderer(
 
         private val DEFAULT_MARK_TINT = Float3(1.0f, 1.0f, 1.0f)
         private const val DEFAULT_MARK_ALPHA = 0.85f
-        private const val DEFAULT_SURFACE_ALPHA = 0.015f
-        private const val DEFAULT_CONTRAST = 0.80f
     }
 }
 

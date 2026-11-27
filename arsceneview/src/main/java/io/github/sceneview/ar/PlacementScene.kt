@@ -395,9 +395,8 @@ fun PlacementScene(
 }
 
 /**
- * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the plane
- * renderer's OWN shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a
- * `shadowMultiplier` quad on every tracked plane, `isShadowReceiver = true` by default).
+ * Whether [PlacementScene] renders the plane-detection marks. The plane renderer's optional
+ * shadow receiver follows the same lifetime when explicitly enabled; it is off by default.
  *
  * Pure function of the composable's flags plus the live placement count, extracted (mirroring the
  * demo-level `TapToPlaceState` fix for #2657) so the single-shadow-receiver invariant is pinned

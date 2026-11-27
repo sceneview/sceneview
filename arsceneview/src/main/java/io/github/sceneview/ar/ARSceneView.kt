@@ -107,6 +107,7 @@ import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.ar.replay.LocalARSessionProbe
 import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
+import io.github.sceneview.ar.scene.PlaneVisualDefaults
 import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.ar.scene.resolvePlaneVisibility
 import io.github.sceneview.collision.CollisionSystem
@@ -455,6 +456,10 @@ internal fun resolvePlaneDepthMode(
 } else {
     Config.DepthMode.DISABLED
 }
+
+/** A plane-only toggle can reconfigure depth only when the app uses the implicit default. */
+internal fun planeDepthConfigurationKey(depthMode: Config.DepthMode?, planeDepthOcclusion: Boolean) =
+    depthMode to (depthMode == null && planeDepthOcclusion)
 
 // `planeRendererVersion` is deprecated and ignored; it only keeps old calls compiling.
 @Suppress("DEPRECATION", "UNUSED_PARAMETER", "UnusedParameter")
@@ -1428,9 +1433,10 @@ fun ARSceneView(
             session.configure { config -> config.planeFindingMode = planeFindingMode }
         }
     }
-    val depthModeGate = remember { ChangeGate(depthMode to planeDepthOcclusion) }
-    LaunchedEffect(depthMode, planeDepthOcclusion) {
-        if (!depthModeGate.shouldApply(depthMode to planeDepthOcclusion)) return@LaunchedEffect
+    val depthConfigurationKey = planeDepthConfigurationKey(depthMode, planeDepthOcclusion)
+    val depthModeGate = remember { ChangeGate(depthConfigurationKey) }
+    LaunchedEffect(depthConfigurationKey) {
+        if (!depthModeGate.shouldApply(depthConfigurationKey)) return@LaunchedEffect
         val session = arCore.session ?: return@LaunchedEffect
         val resolvedDepthMode = resolvePlaneDepthMode(
             requestedDepthMode = depthMode,
@@ -2937,11 +2943,11 @@ fun ARSceneView(
 )
 
 /**
- * Whether the plane renderer catches the scene's cast shadows on the ARCore polygons. A scene
- * that shows its planes only as a guide ([AutoPlacementScene]) turns it off: a shadow clipped
- * by a polygon's hard edge reads as a dark patch, not as the object's shadow (#5209).
+ * Whether the plane renderer catches the scene's cast shadows on the ARCore polygons.
+ * Disabled by default: a shadow clipped by a polygon's hard edge reads as a dark patch,
+ * not as the object's shadow (#5209, #5327). Apps can declare explicit shadow receivers instead.
  */
-internal val LocalPlaneShadowReceiver = staticCompositionLocalOf { true }
+internal val LocalPlaneShadowReceiver = staticCompositionLocalOf { PlaneVisualDefaults.SHADOW_RECEIVER }
 
 /** Retains the JVM descriptor from before the plane-only depth-occlusion opt-out. */
 @Deprecated("Binary-compatibility overload. Use the planeDepthOcclusion overload.", level = DeprecationLevel.HIDDEN)

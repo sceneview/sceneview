@@ -1,12 +1,39 @@
 package io.github.sceneview.ar.scene
 
 import com.google.ar.core.Config
+import io.github.sceneview.ar.PlaneRevealAnimation
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 class PlaneRendererDepthOcclusionTest {
+    @Test fun `plane depth runs through fade-out then stops until marks return`() {
+        val animation = PlaneRevealAnimation()
+        assertFalse(animation.hasVisibleMarks(show = false))
+        // First visible frame must acquire depth even before opacity advances from zero.
+        assertTrue(animation.hasVisibleMarks(show = true))
+        animation.advance(dtSeconds = 1f, show = true, focusTarget = 0f)
+        animation.advance(dtSeconds = 0.01f, show = false, focusTarget = 0f)
+        assertTrue("Fading marks still need depth", animation.hasVisibleMarks(show = false))
+        animation.advance(dtSeconds = 1f, show = false, focusTarget = 0f)
+        repeat(120) {
+            assertFalse("Placed state must not process plane depth", animation.hasVisibleMarks(false))
+            animation.advance(dtSeconds = 1f / 60f, show = false, focusTarget = 0f)
+        }
+        assertTrue("Showing marks again restarts plane depth", animation.hasVisibleMarks(true))
+    }
+
+    @Test fun `plane depth stops only after the last visible plane finishes fading`() {
+        val planes = listOf(PlaneRevealAnimation(), PlaneRevealAnimation())
+        planes.forEach { it.advance(dtSeconds = 1f, show = true, focusTarget = 0f) }
+        planes[0].advance(dtSeconds = 1f, show = false, focusTarget = 0f)
+        planes[1].advance(dtSeconds = 0.01f, show = false, focusTarget = 0f)
+        assertTrue(planes.any { it.hasVisibleMarks(false) })
+        planes[1].advance(dtSeconds = 1f, show = false, focusTarget = 0f)
+        assertFalse(planes.any { it.hasVisibleMarks(false) })
+    }
+
     @Test fun `automatic depth occludes plane marks`() {
         assertTrue(shouldOccludePlanes(Config.DepthMode.AUTOMATIC))
     }

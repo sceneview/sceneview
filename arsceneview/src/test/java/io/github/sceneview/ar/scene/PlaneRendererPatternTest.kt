@@ -4,10 +4,39 @@ import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.normalize
+import io.github.sceneview.ar.selectPlanePrimitives
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PlaneRendererPatternTest {
+    @Test fun `default plane visuals have no fill or dark halo`() {
+        assertEquals("No film between the marks", 0f, PlaneVisualDefaults.SURFACE_ALPHA, 0f)
+        assertEquals("No dark outline around the marks", 0f, PlaneVisualDefaults.CONTRAST, 0f)
+    }
+
+    @Test fun `default plane visuals never attach the black shadow polygon`() {
+        assertEquals(
+            listOf("marks"),
+            selectPlanePrimitives(
+                isVisible = true,
+                planeMaterial = "marks",
+                isShadowReceiver = PlaneVisualDefaults.SHADOW_RECEIVER,
+                shadowMaterial = "black polygon",
+                out = ArrayList(),
+            ),
+        )
+        assertEquals(
+            emptyList<String>(),
+            selectPlanePrimitives(
+                isVisible = false,
+                planeMaterial = "marks",
+                isShadowReceiver = PlaneVisualDefaults.SHADOW_RECEIVER,
+                shadowMaterial = "black polygon",
+                out = ArrayList(),
+            ),
+        )
+    }
+
     private val normals = listOf(
         Float3(0f, 1f, 0f), Float3(0f, -1f, 0f), Float3(1f, 0f, 0f),
         Float3(0f, 0f, 1f), Float3(1f, 0f, 1f), Float3(0.3f, 1f, 0.2f),

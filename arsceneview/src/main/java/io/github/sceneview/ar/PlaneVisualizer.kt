@@ -42,8 +42,8 @@ import kotlin.math.sqrt
  *    an even tone where they would shimmer.
  * 3. **Reveal as the plane grows.** A bright front sweeps out from the plane's centre the
  *    first time it appears, and again over the new area each time ARCore extends it.
- * 4. **Focus.** The plane under the centre of the screen is brighter and carries a pool of
- *    light where the camera points. Mark dimensions stay fixed in metres.
+ * 4. **Focus.** The marks under the centre of the screen become brighter, leaving their gaps
+ *    clear. Mark dimensions stay fixed in metres.
  * 5. **Tidy exit.** Hiding or disabling a plane fades it out instead of cutting it.
  *
  * The mesh is rebuilt on every [updatePlane] (at [PlaneRenderer.maxUpdatesPerSecond]) into
@@ -280,6 +280,11 @@ class PlaneVisualizer(
 
     private fun isShowingPlane() = isEnabled && isVisible && isTracking
 
+    /** Matches the mark primitive's lifetime, including its final fade-out frames. */
+    internal val hasVisibleMarks: Boolean
+        get() = currentIndexCount > 0 && planeSubmeshMaterial != null && isTracking &&
+            animation.hasVisibleMarks(isShowingPlane())
+
     private fun pushUniforms() {
         val instance = planeSubmeshMaterial ?: return
         if (animation.opacity != pushedOpacity) {
@@ -346,7 +351,7 @@ class PlaneVisualizer(
     private fun updateRenderable() {
         val primitives = selectPlanePrimitives(
             // Keep drawing while fading out; drop the submesh once invisible.
-            isVisible = isTracking && (isShowingPlane() || animation.opacity > 0f),
+            isVisible = hasVisibleMarks,
             planeMaterial = planeSubmeshMaterial,
             isShadowReceiver = isEnabled && isTracking && isShadowReceiver,
             shadowMaterial = shadowSubmeshMaterial,
@@ -485,6 +490,9 @@ internal class PlaneRevealAnimation {
     /** Whole-plane opacity, `0..1`. */
     var opacity = 0f
         private set
+
+    /** A just-enabled mark needs drawing even before its first nonzero animation tick. */
+    fun hasVisibleMarks(show: Boolean): Boolean = show || opacity > 0f
 
     /** Focus emphasis, `0..1`. */
     var focus = 0f
