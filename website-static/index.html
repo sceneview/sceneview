@@ -226,22 +226,18 @@
           </div>
 
           <div id="hero-panel-webgl" role="tabpanel" aria-labelledby="hm-webgl" hidden>
-            <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/smeg_toaster_homepage_meshopt.glb"
-                 data-bbox="-0.155,0,-0.0925,0.155,0.2021,0.0925" data-hull="box" data-elev="0.22" data-angle="0.55" data-fill="0.8" data-top="0.55" data-bottom="-0.62"
+            <div class="stage hero__stage" id="hero-stage" data-stage data-src="/web-demo/models/animated_dragon.glb"
+                 data-anim="0" data-elev="0.22" data-angle="0.45" data-fill="0.82"
                  data-autoload="tap" data-mobile="tap">
               <div class="stage__box">
                 <div class="stage__frame">
-                  <picture>
-                    <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" sizes="44vw" width="960" height="960">
-                    <img class="stage__poster" src="assets/home/hero-smeg-toaster-wide-960.webp" srcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w"
-                         sizes="100vw" width="960" height="600" loading="lazy"
-                         alt="A pastel green SMEG two-slice toaster with a chrome base and lever, rendered by SceneView Web.">
-                  </picture>
-                  <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a SMEG toaster. Drag sideways to turn it."></canvas>
+                  <img class="stage__poster" src="/web-demo/thumbs/animated_dragon.webp" width="960" height="600" loading="lazy"
+                       alt="An animated 3D dragon rendered in real time by SceneView WebGL2 on Google Filament.">
+                  <canvas class="stage__canvas" role="img" aria-label="Interactive animated 3D dragon model. Drag sideways to turn it."></canvas>
                 </div>
               </div>
               <div class="stage__bar">
-                <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1">SMEG toaster</a> by The Fresh Lab, CC&nbsp;BY&nbsp;4.0</p>
+                <p class="stage__credit credit"><a href="/web-demo/">Animated dragon</a> by LasquetiSpice, CC&nbsp;BY&nbsp;4.0</p>
                 <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
                 <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
               </div>
