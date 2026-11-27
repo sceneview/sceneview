@@ -259,6 +259,83 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `restart preserves the highest node counter the session used`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val probe = WireProbe(hub)
+        val alice = session(hub.join("alice"), "Alice", now = { 1_000L })
+        alice.start()
+
+        alice.testOnlyReceive(
+            "bob",
+            CollaborativeWireFormat.node(
+                "bob", "k", "lamp", at(2f), identity, unit, logicalClock = 61_000L,
+            ),
+        )
+        advanceUntilIdle()
+        alice.placeNode("k", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        alice.stop()
+        alice.start()
+        alice.placeNode("k", "sofa", at(3f), identity)
+        advanceUntilIdle()
+
+        val counters = probe.nodeLines().map {
+            (CollaborativeWireFormat.parse(it) as CollaborativeMessage.NodeState).logicalClock
+        }
+        assertEquals(listOf(61_001L, 61_002L), counters)
+    }
+
+    @Test
+    fun `node mutations captured before restart cannot change the new runtime`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val probe = WireProbe(hub)
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        advanceUntilIdle()
+
+        val placementCaptured = CountDownLatch(1)
+        val resumePlacement = CountDownLatch(1)
+        val stalePlacement = Thread {
+            alice.testOnlyPlaceNode("stale", "chair", at(1f), identity) {
+                placementCaptured.countDown()
+                check(resumePlacement.await(5, TimeUnit.SECONDS))
+            }
+        }
+        stalePlacement.start()
+        assertTrue(placementCaptured.await(5, TimeUnit.SECONDS))
+        alice.stop()
+        alice.start()
+        resumePlacement.countDown()
+        stalePlacement.join(5_000L)
+        assertFalse(stalePlacement.isAlive)
+        assertTrue(alice.placedNodes.isEmpty())
+
+        alice.placeNode("fresh", "lamp", at(2f), identity)
+        val removalCaptured = CountDownLatch(1)
+        val resumeRemoval = CountDownLatch(1)
+        val staleRemoval = Thread {
+            alice.testOnlyRemoveNode("fresh") {
+                removalCaptured.countDown()
+                check(resumeRemoval.await(5, TimeUnit.SECONDS))
+            }
+        }
+        staleRemoval.start()
+        assertTrue(removalCaptured.await(5, TimeUnit.SECONDS))
+        alice.stop()
+        alice.start()
+        alice.placeNode("fresh", "sofa", at(3f), identity)
+        resumeRemoval.countDown()
+        staleRemoval.join(5_000L)
+        assertFalse(staleRemoval.isAlive)
+        advanceUntilIdle()
+
+        assertEquals("sofa", alice.placedNodes.single().modelKey)
+        assertTrue(probe.nodeLines().none { "\"node\":\"stale\"" in it })
+        assertTrue(probe.nodeLines().none { "\"type\":\"remove\"" in it })
+    }
+
+    @Test
     fun `a host completion captured before restart cannot change the new runtime`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val probe = WireProbe(hub)
