@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -279,7 +281,8 @@ class CollaborativeSessionTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val alice = session(hub.join("alice"), "Alice")
         alice.start()
-        val staleCompletion = alice.testOnlyCaptureResolvedCompletion()
+        var destroyed = false
+        val staleCompletion = alice.testOnlyCaptureResolvedCompletion { destroyed = true }
 
         alice.stop()
         alice.start()
@@ -287,6 +290,7 @@ class CollaborativeSessionTest {
 
         assertNull(alice.sharedCloudAnchorId)
         assertNull(alice.testOnlyStateAnchorId)
+        assertTrue(destroyed)
     }
 
     @Test
@@ -299,6 +303,37 @@ class CollaborativeSessionTest {
 
         assertEquals("resolved-anchor", alice.sharedCloudAnchorId)
         assertEquals("resolved-anchor", alice.testOnlyStateAnchorId)
+    }
+
+    @Test
+    fun `a stale pose publisher cannot latch the restarted runtime`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val probe = WireProbe(hub)
+        val alice = session(hub.join("alice"), "Alice", poseRateHz = 10)
+        alice.start()
+        advanceUntilIdle()
+
+        val capturedOldRuntime = CountDownLatch(1)
+        val resumeOldPublisher = CountDownLatch(1)
+        val stalePublisher = Thread {
+            alice.testOnlyBroadcastLocalPose(at(1f), identity) {
+                capturedOldRuntime.countDown()
+                check(resumeOldPublisher.await(5, TimeUnit.SECONDS))
+            }
+        }
+        stalePublisher.start()
+        assertTrue(capturedOldRuntime.await(5, TimeUnit.SECONDS))
+
+        alice.stop()
+        alice.start()
+        resumeOldPublisher.countDown()
+        stalePublisher.join(5_000L)
+        assertFalse(stalePublisher.isAlive)
+
+        alice.broadcastLocalPose(at(2f), identity)
+        runCurrent()
+
+        assertTrue(probe.poseXs().contains(2f))
     }
 
     @Test

@@ -323,6 +323,16 @@ class CollaborativeStateTest {
     }
 
     @Test
+    fun `an evicted removal preserves peer id ordering at the same clock`() {
+        val state = CollaborativeState(local, maxNodes = 1)
+        state.apply(remove("a", clock = 100L, key = "k"))
+        state.apply(remove("b", clock = 101L, key = "other"))
+
+        assertTrue(state.apply(place("z", clock = 100L, key = "k")))
+        assertEquals("z", state.placedNodes.single().ownerPeerId)
+    }
+
+    @Test
     fun `removing a key again makes it the newest removal`() {
         val state = CollaborativeState(local, maxNodes = 2)
         state.apply(remove("p1", clock = 10L, key = "k1"))

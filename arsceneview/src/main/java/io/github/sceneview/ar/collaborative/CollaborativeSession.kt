@@ -186,6 +186,9 @@ public constructor(
         val outbox = LinkedHashMap<String, ByteArray>()
         val outboxSignal = Channel<Unit>(capacity = Channel.CONFLATED)
         val inbox = Channel<Inbound>(capacity = Channel.UNLIMITED)
+        val poseLock = Any()
+        var poseWindowOpen = false
+        var pendingPose: PendingPose? = null
         var incomingHandle: AutoCloseable? = null
         var hostNode: CloudAnchorNode? = null
         var resolveTask: com.google.ar.core.ResolveCloudAnchorFuture? = null
@@ -201,9 +204,6 @@ public constructor(
     // one. A window that closes with nothing waiting ends the cycle.
     private val poseIntervalMillis: Long =
         if (poseRateHz <= 0) 0L else (MILLIS_PER_SECOND + poseRateHz - 1) / poseRateHz
-    private val poseLock = Any()
-    private var poseWindowOpen = false
-    private var pendingPose: PendingPose? = null
 
     // The wall clock behind node counters and pose timestamps. A test
     // replaces it to place two writes at the same instant.
@@ -257,10 +257,6 @@ public constructor(
                 publishNodes()
                 _sharedCloudAnchorId = null
                 sharedAnchorNode = null
-            }
-            synchronized(poseLock) {
-                poseWindowOpen = false
-                pendingPose = null
             }
             Runtime().also {
                 runtime = it
@@ -420,7 +416,12 @@ public constructor(
             cloudAnchorId,
         ) completion@{ resolveState, node ->
             synchronized(lifecycleLock) {
-                if (runtime !== run) return@completion
+                if (runtime !== run) {
+                    // ARCore invokes this completion on the main thread, where
+                    // Filament and anchor destruction must remain.
+                    completeResolvedAnchor(run, cloudAnchorId) { node?.destroy() }
+                    return@completion
+                }
                 run.resolveTask = null
                 if (node != null && !resolveState.isError) {
                     sharedAnchorNode = node
@@ -479,7 +480,16 @@ public constructor(
 
     /** [broadcastLocalPose] without the ARCore type, for JVM tests. */
     internal fun broadcastLocalPose(translation: FloatArray, quaternion: FloatArray) {
+        broadcastLocalPose(translation, quaternion, afterRuntimeCaptured = null)
+    }
+
+    private fun broadcastLocalPose(
+        translation: FloatArray,
+        quaternion: FloatArray,
+        afterRuntimeCaptured: (() -> Unit)?,
+    ) {
         val run = runtime ?: return
+        afterRuntimeCaptured?.invoke()
         // Checked here, where the caller can see it: a pose that waits is
         // serialized later, on the session scope.
         require(translation.size == 3) { "translation must have 3 components" }
@@ -491,14 +501,14 @@ public constructor(
             enqueue(run, OUTBOX_POSE, pose.toLine())
             return
         }
-        synchronized(poseLock) {
-            if (poseWindowOpen) {
+        synchronized(run.poseLock) {
+            if (run.poseWindowOpen) {
                 // Kept as numbers: called every frame, and a pose that a newer
                 // one replaces is never serialized.
-                pendingPose = pose
+                run.pendingPose = pose
                 return
             }
-            poseWindowOpen = true
+            run.poseWindowOpen = true
             // Queued under the lock, like the trailing pose below, so two
             // poses never reach the outbox in the wrong order.
             enqueue(run, OUTBOX_POSE, pose.toLine())
@@ -506,11 +516,11 @@ public constructor(
         run.scope.launch {
             while (true) {
                 delay(poseIntervalMillis)
-                synchronized(poseLock) {
-                    val trailing = pendingPose
-                    pendingPose = null
+                synchronized(run.poseLock) {
+                    val trailing = run.pendingPose
+                    run.pendingPose = null
                     if (trailing == null) {
-                        poseWindowOpen = false
+                        run.poseWindowOpen = false
                         return@launch
                     }
                     enqueue(run, OUTBOX_POSE, trailing.toLine())
@@ -707,9 +717,16 @@ public constructor(
             true
         }
 
-    private fun completeResolvedAnchor(run: Runtime, cloudAnchorId: String): Boolean =
+    private fun completeResolvedAnchor(
+        run: Runtime,
+        cloudAnchorId: String,
+        onRejected: () -> Unit = {},
+    ): Boolean =
         synchronized(lifecycleLock) {
-            if (runtime !== run) return@synchronized false
+            if (runtime !== run) {
+                onRejected()
+                return@synchronized false
+            }
             _sharedCloudAnchorId = cloudAnchorId
             synchronized(stateLock) {
                 state.applyLocal(
@@ -744,9 +761,20 @@ public constructor(
     }
 
     /** Captures the current generation like an ARCore resolve completion callback. */
-    internal fun testOnlyCaptureResolvedCompletion(): (String) -> Unit {
+    internal fun testOnlyCaptureResolvedCompletion(onRejected: () -> Unit = {}): (String) -> Unit {
         val run = runtime
-        return { cloudAnchorId -> if (run != null) completeResolvedAnchor(run, cloudAnchorId) }
+        return { cloudAnchorId ->
+            if (run != null) completeResolvedAnchor(run, cloudAnchorId, onRejected)
+        }
+    }
+
+    /** Pauses a pose publisher after it captures its runtime generation. */
+    internal fun testOnlyBroadcastLocalPose(
+        translation: FloatArray,
+        quaternion: FloatArray,
+        afterRuntimeCaptured: () -> Unit,
+    ) {
+        broadcastLocalPose(translation, quaternion, afterRuntimeCaptured)
     }
 
     /** The internal anchor record shared by successful host and resolve callbacks. */

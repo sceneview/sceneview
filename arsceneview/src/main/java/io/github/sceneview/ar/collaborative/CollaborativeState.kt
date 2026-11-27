@@ -44,11 +44,11 @@ package io.github.sceneview.ar.collaborative
  *   key holds, tombstone included. A session only converges on a key that
  *   such a peer writes if that peer is its only concurrent writer.
  * - **Tombstones are bounded.** At most [maxNodes] are kept. When an older
- *   tombstone is evicted, its counter advances one global removal high-water
- *   mark, so a delayed placement at or below that mark cannot resurrect any
- *   evicted key. This constant-space safeguard can reject a genuinely old
- *   first placement for another key after heavy removal churn; a current
- *   writer retries with its wall-clock counter and succeeds.
+ *   tombstone is evicted, its `(logicalClock, peerId)` pair advances one global
+ *   removal high-water mark, so a delayed placement at or below that mark
+ *   cannot resurrect any evicted key. This constant-space safeguard can reject
+ *   a genuinely old first placement for another key after heavy removal churn;
+ *   a current writer retries with its wall-clock counter and succeeds.
  *
  * ### Roster caps (DoS hardening, #2569)
  *
@@ -113,7 +113,7 @@ public constructor(
     // Highest evicted removal. This one is also a global floor for an unknown
     // remote key, preventing an old placement from resurrecting that key after
     // its per-key tombstone left the bounded map.
-    private var evictedRemovalClock = 0L
+    private var evictedRemovalVersion: NodeVersion? = null
 
     /** The most recent shared anchor announced for the session, or `null`. */
     public var sharedAnchor: CollaborativeMessage.SharedAnchor? = null
@@ -267,7 +267,7 @@ public constructor(
         // A bounded tombstone map cannot retain every removed key. Its evicted
         // high-water mark rejects any delayed placement old enough to be one of
         // those removals' predecessors, without retaining the key itself.
-        if (existing == null && version.logicalClock <= evictedRemovalClock) return false
+        if (existing == null && evictedRemovalVersion?.let { version <= it } == true) return false
         // Roster cap: a peer never creates a NEW node beyond maxNodes — moves
         // / rewrites of already-placed keys still apply (see class doc, #2569).
         if (!local && key !in nodesByKey && nodesByKey.size >= maxNodes) return false
@@ -306,9 +306,12 @@ public constructor(
     private fun evictOldestTombstones() {
         val oldestFirst = tombstones.values.iterator()
         while (tombstones.size > maxNodes && oldestFirst.hasNext()) {
-            val evictedClock = oldestFirst.next().logicalClock
-            forgottenClock = maxOf(forgottenClock, evictedClock)
-            evictedRemovalClock = maxOf(evictedRemovalClock, evictedClock)
+            val evictedVersion = oldestFirst.next()
+            forgottenClock = maxOf(forgottenClock, evictedVersion.logicalClock)
+            val watermark = evictedRemovalVersion
+            if (watermark == null || evictedVersion > watermark) {
+                evictedRemovalVersion = evictedVersion
+            }
             oldestFirst.remove()
         }
     }
