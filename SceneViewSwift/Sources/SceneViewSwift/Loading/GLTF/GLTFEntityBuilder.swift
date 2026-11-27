@@ -3,6 +3,7 @@ import Foundation
 import RealityKit
 import Metal
 import simd
+import os
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -28,17 +29,46 @@ import AppKit
 enum GLTFLoader {
 
     /// Parses and decodes a glTF file on a background task.
-    static func decodeScene(contentsOf url: URL) async throws -> GLTFScene {
-        try await Task.detached(priority: .userInitiated) {
-            try GLTFScene.decode(GLTFDocument.read(contentsOf: url))
-        }.value
+    static func decodeScene(
+        contentsOf url: URL,
+        decode: @escaping @Sendable (GLTFDocument, @Sendable () -> Bool) throws -> GLTFScene = { document, isCancelled in
+            try GLTFScene.decode(document, isImageDecodeCancelled: isCancelled)
+        }
+    ) async throws -> GLTFScene {
+        try Task.checkCancellation()
+        // The child task inherits cancellation. GCD image workers need a separate signal.
+        let imageDecodeCancelled = OSAllocatedUnfairLock(initialState: false)
+        let result = await withTaskCancellationHandler {
+            await withTaskGroup(of: Result<GLTFScene, Error>.self) { group in
+                group.addTask(priority: .userInitiated) {
+                    Result {
+                        let document = try GLTFDocument.read(contentsOf: url)
+                        return try decode(document, { imageDecodeCancelled.withLock { $0 } })
+                    }
+                }
+                return await group.next() ?? .failure(CancellationError())
+            }
+        } onCancel: {
+            imageDecodeCancelled.withLock { $0 = true }
+        }
+        try Task.checkCancellation()
+        return try result.get()
     }
 
     /// The whole load: decode in the background, build on the main actor.
     @MainActor
     static func loadEntity(contentsOf url: URL, unit: ModelUnit? = nil) async throws -> ModelEntity {
         let scene = try await decodeScene(contentsOf: url)
-        return try await GLTFEntityBuilder(scene: scene, unit: unit).build()
+        try Task.checkCancellation()
+        let entity: ModelEntity
+        do {
+            entity = try await GLTFEntityBuilder(scene: scene, unit: unit).build()
+        } catch {
+            try Task.checkCancellation()
+            throw error
+        }
+        try Task.checkCancellation()
+        return entity
     }
 }
 
@@ -93,15 +123,17 @@ final class GLTFEntityBuilder {
                 container.addChild(entity)
             }
         }
+        try Task.checkCancellation()
         guard drawableCount > 0 else { throw ModelLoadingError.emptyMesh }
 
-        try buildAnimations(storeIn: root)
+        try await buildAnimations(storeIn: root)
         return root
     }
 
     // MARK: - Nodes
 
     private func makeEntity(node index: Int, restWorld: [simd_float4x4], container: Entity) async throws -> Entity? {
+        try Task.checkCancellation()
         guard let node = scene.nodes[safe: index], entities[index] == nil else { return nil }
         let entity: Entity
         if let meshIndex = node.mesh, let mesh = scene.meshes[safe: meshIndex], !mesh.primitives.isEmpty {
@@ -170,6 +202,7 @@ final class GLTFEntityBuilder {
             // A mesh instanced by several nodes: share the MeshResource, rebuild only
             // the (cheap) material list.
             for p in mesh.primitives {
+                try Task.checkCancellation()
                 let material = scene.materials[safe: p.material ?? -1] ?? .default
                 materials.append(await makeMaterial(material, vertexColors: p.colors))
             }
@@ -178,6 +211,7 @@ final class GLTFEntityBuilder {
         var parts: [MeshResource.Part] = []
 
         for (i, p) in mesh.primitives.enumerated() {
+            try Task.checkCancellation()
             let material = scene.materials[safe: p.material ?? -1] ?? .default
             var part = MeshResource.Part(id: "\(key)_\(i)", materialIndex: parts.count)
             part.positions = MeshBuffers.Positions(p.positions)
@@ -209,6 +243,7 @@ final class GLTFEntityBuilder {
             materials.append(await makeMaterial(material, vertexColors: p.colors))
         }
 
+        try Task.checkCancellation()
         var contents = MeshResource.Contents()
         contents.models = MeshModelCollection([MeshResource.Model(id: key, parts: parts)])
         if let skeleton { contents.skeletons = MeshSkeletonCollection([skeleton]) }
@@ -335,7 +370,7 @@ final class GLTFEntityBuilder {
     }
 
     private func texture(_ ref: GLTFTextureRef?, _ variant: GLTFImageVariant) async -> PhysicallyBasedMaterial.Texture? {
-        guard let ref else { return nil }
+        guard !Task.isCancelled, let ref else { return nil }
         let key = GLTFImageKey(image: ref.image, variant: variant)
         let resource: TextureResource
         if let cached = textures[key] {
@@ -384,6 +419,7 @@ final class GLTFEntityBuilder {
     }
 
     private func emissiveTexture(_ ref: GLTFTextureRef, tint: SIMD3<Float>?) async -> PhysicallyBasedMaterial.Texture? {
+        guard !Task.isCancelled else { return nil }
         guard let tint,
               let image = scene.images[GLTFImageKey(image: ref.image, variant: .color)],
               let tinted = Self.tinted(image, by: tint),
@@ -473,8 +509,9 @@ final class GLTFEntityBuilder {
     /// Every animated node gets a `Transform` track bound to its entity (so anything
     /// parented to a joint follows it), and every skinned mesh whose skeleton the
     /// animation reaches gets a `JointTransforms` track computed from the posed scene.
-    private func buildAnimations(storeIn root: ModelEntity) throws {
+    private func buildAnimations(storeIn root: ModelEntity) async throws {
         for animation in scene.animations {
+            try Task.checkCancellation()
             let animated = scene.animatedNodes(animation).filter { entities[$0] != nil }
             guard !animated.isEmpty else { continue }
 
@@ -498,6 +535,10 @@ final class GLTFEntityBuilder {
             var skinFrames: [Int: [JointTransforms]] = [:]
 
             for k in 0..<frameCount {
+                if k.isMultiple(of: 16) {
+                    await Task.yield()
+                    try Task.checkCancellation()
+                }
                 let t = Float(k) * interval
                 let locals = scene.localTransforms(animation: animation, at: t)
                 for node in sortedAnimated {
@@ -513,6 +554,7 @@ final class GLTFEntityBuilder {
                 }
             }
 
+            try Task.checkCancellation()
             var tracks: [any AnimationDefinition] = []
             for node in sortedAnimated {
                 guard let frames = nodeFrames[node], let path = bindPath(to: node) else { continue }
@@ -531,6 +573,7 @@ final class GLTFEntityBuilder {
                 ))
             }
             guard !tracks.isEmpty else { continue }
+            try Task.checkCancellation()
             let resource = try AnimationResource.generate(with: AnimationGroup(group: tracks, name: animation.name))
             resource.store(in: root)
         }

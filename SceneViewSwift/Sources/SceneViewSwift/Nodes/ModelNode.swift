@@ -196,10 +196,12 @@ public struct ModelNode: @unchecked Sendable {
         let format = try ModelFormat.sniff(contentsOf: url)
         if format == .gltf || format == .glb {
             let modelEntity = try await GLTFLoader.loadEntity(contentsOf: url, unit: unit)
+            try Task.checkCancellation()
             if enableCollision {
                 modelEntity.generateCollisionShapes(recursive: true)
                 modelEntity.makeInputTargetable()
             }
+            try Task.checkCancellation()
             return ModelNode(modelEntity)
         }
         guard format.loader == .realityKit else {

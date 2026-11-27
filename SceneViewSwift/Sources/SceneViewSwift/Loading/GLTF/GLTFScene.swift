@@ -226,7 +226,12 @@ extension GLTFScene {
     ///
     /// - Parameter decodeImages: `false` skips image decoding entirely — the geometry
     ///   path (``MeshAsset``) needs no pixels.
-    static func decode(_ document: GLTFDocument, decodeImages: Bool = true) throws -> GLTFScene {
+    /// - Parameter isImageDecodeCancelled: Cancellation state shared with the GCD image workers.
+    static func decode(
+        _ document: GLTFDocument, decodeImages: Bool = true,
+        isImageDecodeCancelled: @Sendable () -> Bool = { false }
+    ) throws -> GLTFScene {
+        try Task.checkCancellation()
         let root = document.root
         let reader = GLTFAccessorReader(document: document)
         var warnings: [String] = []
@@ -301,8 +306,10 @@ extension GLTFScene {
 
         // --- Meshes ------------------------------------------------------------
         let meshes: [GLTFMesh] = try (root.meshes ?? []).enumerated().map { meshIndex, def in
+            try Task.checkCancellation()
             var primitives: [GLTFPrimitive] = []
             for (primitiveIndex, p) in def.primitives.enumerated() {
+                try Task.checkCancellation()
                 let mode = p.mode ?? 4
                 guard mode >= 4 && mode <= 6 else {
                     warnings.append("mesh \(meshIndex) primitive \(primitiveIndex): mode \(mode) (points/lines) is not drawn")
@@ -312,6 +319,7 @@ extension GLTFScene {
                 let positions = try reader.vec3(positionAccessor)
                 guard !positions.isEmpty else { continue }
 
+                try Task.checkCancellation()
                 var raw: [UInt32]
                 if let indices = p.indices {
                     raw = try reader.indices(indices)
@@ -323,12 +331,15 @@ extension GLTFScene {
                         reason: "mesh \(meshIndex) primitive \(primitiveIndex): index \(bad) ≥ \(positions.count) vertices"
                     )
                 }
+                try Task.checkCancellation()
                 let indices = triangleList(raw, mode: mode)
                 guard indices.count >= 3 else { continue }
 
                 func attribute<T>(_ name: String, _ read: (Int) throws -> [T]) throws -> [T]? {
                     guard let accessor = p.attributes[name] else { return nil }
+                    try Task.checkCancellation()
                     let values = try read(accessor)
+                    try Task.checkCancellation()
                     return values.count == positions.count ? values : nil
                 }
                 var primitive = GLTFPrimitive(positions: positions, indices: indices, material: p.material)
@@ -342,6 +353,7 @@ extension GLTFScene {
                         return SIMD2(t.x, 1 - t.y)   // glTF: top-left origin; RealityKit: bottom-left
                     }
                 }
+                try Task.checkCancellation()
                 try readSkinning(p, reader: reader, vertexCount: positions.count, into: &primitive)
                 primitives.append(primitive)
             }
@@ -352,6 +364,7 @@ extension GLTFScene {
 
         // --- Skins -------------------------------------------------------------
         let skins: [GLTFSkin] = try (root.skins ?? []).enumerated().map { index, def in
+            try Task.checkCancellation()
             guard def.joints.allSatisfy({ $0 >= 0 && $0 < nodes.count }) else {
                 throw ModelLoadingError.malformed(reason: "skin \(index) names a joint that is not a node")
             }
@@ -368,6 +381,7 @@ extension GLTFScene {
 
         // --- Animations --------------------------------------------------------
         let animations: [GLTFAnimation] = try (root.animations ?? []).enumerated().map { index, def in
+            try Task.checkCancellation()
             var channels: [GLTFAnimationChannel] = []
             for channel in def.channels {
                 guard let node = channel.target.node, node >= 0, node < nodes.count,
@@ -396,10 +410,14 @@ extension GLTFScene {
         }.filter { !$0.channels.isEmpty }
 
         // --- Images ------------------------------------------------------------
+        try Task.checkCancellation()
         var images: [GLTFImageKey: CGImage] = [:]
         if decodeImages {
-            images = decodeImagesUsed(by: materials, document: document, warnings: &warnings)
+            images = try decodeImagesUsed(
+                by: materials, document: document, warnings: &warnings, isCancelled: isImageDecodeCancelled
+            )
         }
+        try Task.checkCancellation()
 
         return GLTFScene(
             name: sanitized(sceneDef?.name) ?? "glTF",
@@ -511,7 +529,9 @@ extension GLTFScene {
         var sets: [([Float], [Float])] = []
         var set = 0
         while let jointsAccessor = p.attributes["JOINTS_\(set)"], let weightsAccessor = p.attributes["WEIGHTS_\(set)"] {
+            try Task.checkCancellation()
             let joints = try reader.floats(jointsAccessor)
+            try Task.checkCancellation()
             let weights = try reader.floats(weightsAccessor)
             guard joints.components == 4, weights.components == 4,
                   joints.values.count == vertexCount * 4, weights.values.count == vertexCount * 4 else {
@@ -521,10 +541,12 @@ extension GLTFScene {
             set += 1
         }
         guard !sets.isEmpty else { return }
+        try Task.checkCancellation()
         let perVertex = sets.count * 4
         var joints = [UInt16](repeating: 0, count: vertexCount * perVertex)
         var weights = [Float](repeating: 0, count: vertexCount * perVertex)
         for vertex in 0..<vertexCount {
+            if vertex.isMultiple(of: 1024) { try Task.checkCancellation() }
             var sum: Float = 0
             for (s, (j, w)) in sets.enumerated() {
                 for k in 0..<4 {
@@ -555,8 +577,9 @@ extension GLTFScene {
     // MARK: Images
 
     private static func decodeImagesUsed(
-        by materials: [GLTFMaterial], document: GLTFDocument, warnings: inout [String]
-    ) -> [GLTFImageKey: CGImage] {
+        by materials: [GLTFMaterial], document: GLTFDocument, warnings: inout [String],
+        isCancelled: @Sendable () -> Bool
+    ) throws -> [GLTFImageKey: CGImage] {
         var wanted: Set<GLTFImageKey> = []
         for m in materials {
             if let t = m.baseColorTexture {
@@ -572,6 +595,7 @@ extension GLTFScene {
             if let t = m.emissiveTexture, !m.unlit { wanted.insert(.init(image: t.image, variant: .color)) }
         }
         let imageIndices = Array(Set(wanted.map(\.image))).sorted()
+        try Task.checkCancellation()
         guard !imageIndices.isEmpty else { return [:] }
 
         // Decode each source image once, in parallel — a PBR asset is typically four or
@@ -580,16 +604,20 @@ extension GLTFScene {
         decoded.initialize(repeating: nil)
         defer { decoded.deinitialize(); decoded.deallocate() }
         DispatchQueue.concurrentPerform(iterations: imageIndices.count) { i in
-            guard let data = try? document.imageData(imageIndices[i]),
+            guard !isCancelled(),
+                  let data = try? document.imageData(imageIndices[i]),
                   let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  !isCancelled(),
                   let image = CGImageSourceCreateImageAtIndex(
                     source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
                   ) else { return }
             decoded[i] = image
         }
+        if isCancelled() { throw CancellationError() }
 
         var out: [GLTFImageKey: CGImage] = [:]
         for (i, index) in imageIndices.enumerated() {
+            try Task.checkCancellation()
             guard let image = decoded[i] else {
                 warnings.append("image \(index) could not be decoded")
                 continue

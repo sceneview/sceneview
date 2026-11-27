@@ -36,10 +36,14 @@ struct GLTFDocument {
     /// Reads a `.glb` or `.gltf` file. External buffers and images resolve relative to
     /// the file's directory.
     static func read(contentsOf url: URL) throws -> GLTFDocument {
+        try Task.checkCancellation()
         let data: Data
         do {
-            data = try Data(contentsOf: url, options: .mappedIfSafe)
+            // GLB slices outlive this read. Own their bytes so a later truncation
+            // of the file cannot invalidate the shared storage.
+            data = try Data(contentsOf: url)
         } catch {
+            try Task.checkCancellation()
             throw ModelLoadingError.unreadableFile(url)
         }
         return try read(data: data, baseURL: url.deletingLastPathComponent())
@@ -47,6 +51,7 @@ struct GLTFDocument {
 
     /// Reads glTF from memory — GLB bytes or JSON text, told apart by the GLB magic.
     static func read(data: Data, baseURL: URL?) throws -> GLTFDocument {
+        try Task.checkCancellation()
         var jsonData = data
         var binChunk: Data?
 
@@ -58,8 +63,10 @@ struct GLTFDocument {
         do {
             root = try JSONDecoder().decode(GLTFRoot.self, from: jsonData)
         } catch {
+            try Task.checkCancellation()
             throw ModelLoadingError.malformed(reason: "glTF JSON could not be decoded (\(error.localizedDescription))")
         }
+        try Task.checkCancellation()
 
         guard root.asset.version.hasPrefix("2") else {
             throw ModelLoadingError.malformed(
@@ -72,6 +79,7 @@ struct GLTFDocument {
 
         var buffers: [Data] = []
         for (index, buffer) in (root.buffers ?? []).enumerated() {
+            try Task.checkCancellation()
             let bytes: Data
             if let uri = buffer.uri {
                 bytes = try resolve(uri: uri, baseURL: baseURL, what: "buffer \(index)")
@@ -92,10 +100,9 @@ struct GLTFDocument {
 
     static let glbMagic = Data("glTF".utf8)
 
-    /// Splits a GLB into its JSON and BIN chunks.
-    private static func splitGLB(_ data: Data) throws -> (json: Data, bin: Data?) {
-        let bytes = [UInt8](data.prefix(12))
-        guard bytes.count == 12 else { throw ModelLoadingError.malformed(reason: "GLB header truncated") }
+    /// Splits a GLB into JSON and BIN slices backed by the original data.
+    static func splitGLB(_ data: Data) throws -> (json: Data, bin: Data?) {
+        guard data.count >= 12 else { throw ModelLoadingError.malformed(reason: "GLB header truncated") }
         let version = readUInt32(data, at: 4)
         guard version == 2 else {
             throw ModelLoadingError.malformed(reason: "GLB version \(version) is not supported — only glTF 2.0 is")
@@ -106,17 +113,18 @@ struct GLTFDocument {
         var json: Data?
         var bin: Data?
         while offset + 8 <= total {
+            try Task.checkCancellation()
             let length = Int(readUInt32(data, at: offset))
             let type = readUInt32(data, at: offset + 4)
             let start = offset + 8
             guard length >= 0, start + length <= total else {
                 throw ModelLoadingError.malformed(reason: "GLB chunk overruns the file")
             }
-            let chunk = data.subdata(in: (data.startIndex + start)..<(data.startIndex + start + length))
+            let range = (data.startIndex + start)..<(data.startIndex + start + length)
             switch type {
-            case 0x4E4F_534A: if json == nil { json = chunk }   // "JSON"
-            case 0x004E_4942: if bin == nil { bin = chunk }     // "BIN\0"
-            default: break                                      // unknown chunks are skipped
+            case 0x4E4F_534A where json == nil: json = data[range]  // "JSON"
+            case 0x004E_4942 where bin == nil: bin = data[range]    // "BIN\0"
+            default: break                                         // skip other chunks
             }
             // Chunks are 4-byte aligned; a writer that forgot the padding still parses.
             offset = start + length
@@ -126,6 +134,7 @@ struct GLTFDocument {
     }
 
     private static func readUInt32(_ data: Data, at offset: Int) -> UInt32 {
+        // The raw buffer starts at the slice's first byte, even when startIndex is nonzero.
         data.withUnsafeBytes { raw in
             UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
         }
@@ -188,7 +197,7 @@ struct GLTFDocument {
         guard start >= 0, view.byteLength >= 0, !overflow, end <= buffer.count else {
             throw ModelLoadingError.malformed(reason: "bufferView \(index) overruns its buffer")
         }
-        return buffer.subdata(in: (buffer.startIndex + start)..<(buffer.startIndex + end))
+        return buffer[(buffer.startIndex + start)..<(buffer.startIndex + end)]
     }
 
     /// The encoded bytes (PNG, JPEG, WebP…) of an image.

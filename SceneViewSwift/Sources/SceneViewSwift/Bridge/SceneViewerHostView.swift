@@ -1,8 +1,9 @@
-#if canImport(UIKit) && (os(iOS) || os(visionOS))
+#if os(iOS) || os(macOS) || os(visionOS)
+import Foundation
+import RealityKit
+#if canImport(UIKit)
 import UIKit
 import SwiftUI
-import RealityKit
-import Foundation
 import simd
 
 /// A flat, `@objc`-visible description of what to render in a ``SceneViewerHostView``.
@@ -676,6 +677,7 @@ final class SceneViewerSceneObjects: ObservableObject {
         return node
     }
 }
+#endif // canImport(UIKit)
 
 /// Owns the entity the models are attached to, and reconciles it with the request.
 @MainActor
@@ -713,6 +715,14 @@ final class SceneViewerContentRoot {
 
     /// Reconciles what is attached with `entries`, loading and detaching the difference.
     func sync(to entries: [SceneViewerModelEntry]) async {
+        await sync(to: entries, loadModel: Self.load)
+    }
+
+    func sync(
+        to entries: [SceneViewerModelEntry],
+        loadModel: @MainActor (SceneViewerModelRequest) async throws -> ModelNode
+    ) async {
+        guard !Task.isCancelled else { return }
         let desired = Set(entries.map(\.key))
 
         // Detach what left the list. Snapshot the keys first — mutating the dictionary
@@ -725,11 +735,13 @@ final class SceneViewerContentRoot {
         loadGeneration &+= 1
         let generation = loadGeneration
 
-        for entry in entries where loaded[entry.key] == nil {
+        for entry in entries {
+            guard !Task.isCancelled else { return }
+            guard loaded[entry.key] == nil else { continue }
             do {
-                let node = try await Self.load(entry.request)
+                let node = try await loadModel(entry.request)
                 // Compare the token captured before the `await`, not the key.
-                guard loadGeneration == generation else { return }
+                guard !Task.isCancelled, loadGeneration == generation else { return }
                 // The list may have been re-applied while this was in flight and this
                 // entry loaded by the newer pass; attaching again would render two copies.
                 guard loaded[entry.key] == nil else { continue }
@@ -745,9 +757,15 @@ final class SceneViewerContentRoot {
                     node.playAllAnimations()
                 }
 
+                guard !Task.isCancelled else { return }
                 loaded[entry.key] = node.entity
                 entity.addChild(node.entity)
+            } catch is CancellationError {
+                return
+            } catch let error as URLError where error.code == .cancelled {
+                return
             } catch {
+                guard !Task.isCancelled else { return }
                 // Logged, not thrown: there is no failed state in the viewer façade, and a
                 // failed load leaves the environment on screen — indistinguishable from a
                 // load still in progress. The log is the only thing that tells them apart,
@@ -804,6 +822,7 @@ enum SceneViewerHostError: LocalizedError {
     }
 }
 
+#if canImport(UIKit)
 /// The SwiftUI scene the host view hosts.
 struct SceneViewerRootView: View {
 
@@ -858,4 +877,5 @@ struct SceneViewerRootView: View {
         }
     }
 }
+#endif // canImport(UIKit)
 #endif
