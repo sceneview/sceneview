@@ -195,11 +195,12 @@ class CollaborativeWireFormatTest {
             floatArrayOf(-1f, 0f, 5f), floatArrayOf(0f, 0f, 0f, 1f),
             floatArrayOf(2f, 2f, 2f), 12L,
         )
-        val line = CollaborativeWireFormat.snapshot("bob", "dave", original)
+        val line = CollaborativeWireFormat.snapshot("bob", "dave", "attempt-7", original)
         val message = CollaborativeWireFormat.parseSnapshot(line)!!
 
         assertEquals("bob", message.relayPeerId)
         assertEquals("dave", message.targetPeerId)
+        assertEquals("attempt-7", message.attemptId)
         assertEquals(original, message.nodeState)
         assertNull(CollaborativeWireFormat.parse(line))
         assertNull(PreClockWireFormat.parse(line))

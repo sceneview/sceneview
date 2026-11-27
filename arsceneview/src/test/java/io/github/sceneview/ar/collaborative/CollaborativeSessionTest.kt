@@ -75,11 +75,15 @@ class CollaborativeSessionTest {
         }
 
     /** A hub member that only records the lines the others send, in order. */
-    private class WireProbe(hub: LoopbackCollaborativeTransport.LoopbackHub) {
+    private class WireProbe(
+        hub: LoopbackCollaborativeTransport.LoopbackHub,
+        peerId: String = "probe",
+    ) {
         val lines = mutableListOf<String>()
+        val transport = hub.join(peerId)
 
         init {
-            hub.join("probe").incoming { _, bytes -> lines += bytes.toString(Charsets.UTF_8) }
+            transport.incoming { _, bytes -> lines += bytes.toString(Charsets.UTF_8) }
         }
 
         fun poses(): List<CollaborativeMessage.ParticipantPose> =
@@ -299,6 +303,112 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `a session started alone requests synchronization when its first peer connects`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val bob = session(hub.join("bob"), "Bob")
+        bob.start()
+        advanceUntilIdle()
+
+        val alice = WireProbe(hub, "alice")
+        alice.transport.send(
+            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
+        )
+        advanceUntilIdle()
+
+        val request = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).single()
+        assertEquals("bob", request.peerId)
+        assertEquals("alice", request.leaderPeerId)
+    }
+
+    @Test
+    fun `concurrent newcomers replay from the established ready session`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val zoe = session(hub.join("zoe"), "Zoe")
+        zoe.start()
+        zoe.placeNode("existing", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        val aliceTransport = hub.join("alice")
+        val bobTransport = hub.join("bob")
+        val alice = session(aliceTransport, "Alice")
+        val bob = session(bobTransport, "Bob")
+        alice.start()
+        bob.start()
+        advanceUntilIdle()
+
+        assertEquals(listOf("existing"), alice.placedNodes.map { it.nodeKey })
+        assertEquals(listOf("existing"), bob.placedNodes.map { it.nodeKey })
+    }
+
+    @Test
+    fun `synchronization falls back when a stopped transport peer does not reply`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val aaronTransport = hub.join("aaron")
+        val aaron = session(aaronTransport, "Aaron")
+        aaron.start()
+        advanceUntilIdle()
+        aaron.stop()
+
+        val zoe = session(hub.join("zoe"), "Zoe")
+        zoe.start()
+        advanceUntilIdle()
+        zoe.placeNode("existing", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        val dave = session(hub.join("dave"), "Dave")
+        dave.start()
+        dave.testOnlyReceive("aaron", CollaborativeWireFormat.syncStatus("aaron", ready = true))
+        advanceUntilIdle()
+
+        assertEquals(listOf("existing"), dave.placedNodes.map { it.nodeKey })
+    }
+
+    @Test
+    fun `a stale completion from before restart cannot finish the new sync attempt`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = WireProbe(hub, "alice")
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        alice.transport.send(
+            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
+        )
+        runCurrent()
+        val oldAttempt = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).last().attemptId
+
+        carol.stop()
+        carol.start()
+        alice.transport.send(
+            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
+        )
+        runCurrent()
+        val newAttempt = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).last().attemptId
+        assertTrue(oldAttempt != newAttempt)
+
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.syncComplete("alice", "carol", oldAttempt),
+        )
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.snapshot(
+                "alice",
+                "carol",
+                newAttempt,
+                CollaborativeMessage.NodeState(
+                    "zoe", "existing", "chair", at(1f), identity, unit, 1_000L,
+                ),
+            ),
+        )
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.syncComplete("alice", "carol", newAttempt),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("existing"), carol.placedNodes.map { it.nodeKey })
+    }
+
+    @Test
     fun `replay election excludes a disconnected previous leader`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val aliceTransport = hub.join("alice")
@@ -335,12 +445,13 @@ class CollaborativeSessionTest {
             CollaborativeWireFormat.snapshotAnchor(
                 "alice",
                 "carol",
+                "attempt",
                 CollaborativeMessage.SharedAnchor("alice", "old-anchor", "room"),
             ),
         )
         carol.testOnlyReceive(
             "alice",
-            CollaborativeWireFormat.syncComplete("alice", "carol"),
+            CollaborativeWireFormat.syncComplete("alice", "carol", "attempt"),
         )
         advanceUntilIdle()
 
@@ -1025,7 +1136,7 @@ class CollaborativeSessionTest {
         )
         carol.testOnlyReceive(
             "alice",
-            CollaborativeWireFormat.snapshot("alice", "carol", forged),
+            CollaborativeWireFormat.snapshot("alice", "carol", "forged-attempt", forged),
         )
         advanceUntilIdle()
 
