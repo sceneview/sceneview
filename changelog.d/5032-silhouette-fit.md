@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- Auto-fit now frames fully skinned, animated content with silhouette probes over separate sampled clip poses instead of only its rest-pose box. Static, geometric, and mixed content keeps corner fitting, while explicit fit modes remain available. Animation envelopes are cached per asset and clip with bounded sampling and rest-pose fallback. ([#5032](https://github.com/sceneview/sceneview/issues/5032))

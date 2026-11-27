@@ -617,19 +617,21 @@ class SceneAutoFitState {
      * @param cameraNode   Camera to reposition.
      * @param contentRoot  Subtree whose bounds drive the framing.
      * @param padding      Extra framing margin — see [fitDistanceForBounds].
-     * @param fitMode      [FitMode.Corners] keeps the historical framing. [FitMode.Silhouette]
-     *                     fits the union box's probes along the camera's current direction.
-     *                     A change re-arms the pass; no model type is selected automatically.
-     * @param animationEnvelope Optional world-space poses replacing the measured content bounds.
-     *                          Re-arms the pass when changed. Transform a model-space envelope with
-     *                          the model node's world transform after centering/scaling the content.
+     * @param fitMode      `null` selects [FitMode.Silhouette] plus the playing clips' envelope (or
+     *                     all clips, up to eight) when every rendered model is skinned and animated
+     *                     and nothing else renders; otherwise [FitMode.Corners]. Pass
+     *                     [FitMode.Corners] to opt out. An explicit mode keeps the raw-box path.
+     * @param animationEnvelope Optional world-space poses replacing the automatically computed
+     *                          envelope. With automatic mode this does not change how the mode is
+     *                          selected. Transform model-space poses by the model node's world
+     *                          transform after centering/scaling the content.
      * @return `true` if this call performed the framing.
      */
     fun maybeFit(
         cameraNode: CameraNode,
         contentRoot: Node,
         padding: Float = DEFAULT_FRAMING_PADDING,
-        fitMode: FitMode = FitMode.Corners,
+        fitMode: FitMode? = null,
         animationEnvelope: AnimationEnvelope? = null
     ): Boolean = maybeFit(cameraNode, listOf(contentRoot), padding, fitMode, animationEnvelope)
 
@@ -638,8 +640,8 @@ class SceneAutoFitState {
      * `SceneView`'s content is registered directly with the node manager (no intermediate
      * content-root node, i.e. `autoCenterContent = false`). Each root's bounds are measured in
      * its own local space and unioned in world space via the root's world transform.
-     * [fitMode] and the world-space [animationEnvelope] have the same opt-in contract as the
-     * single-root overload; an envelope describes the entire subject to frame.
+     * [fitMode] and the world-space [animationEnvelope] have the same automatic-selection contract
+     * as the single-root overload; an envelope describes the entire subject to frame.
      *
      * **Threading:** must run on the main thread — reads and writes Filament state.
      */
@@ -647,7 +649,7 @@ class SceneAutoFitState {
         cameraNode: CameraNode,
         contentRoots: List<Node>,
         padding: Float = DEFAULT_FRAMING_PADDING,
-        fitMode: FitMode = FitMode.Corners,
+        fitMode: FitMode? = null,
         animationEnvelope: AnimationEnvelope? = null
     ): Boolean {
         // No content to frame yet. See [FramingGate.isPending]: this is a wait on a push source
@@ -667,6 +669,14 @@ class SceneAutoFitState {
         } else cameraNode.contentPadding
         if (gate.rearmOnChange(Triple(framingKey, fitMode, animationEnvelope))) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
+        // Resolve automatic mode only after the gate admits this frame. In particular, do not
+        // sample envelopes after a settled gate has latched, and never put the newly allocated
+        // envelope in the re-arm key above: automatic mode is keyed on the caller's stable null.
+        val automatic = if (fitMode == null) {
+            resolveAutoFraming(contentRoots, computeEnvelope = animationEnvelope == null)
+        } else null
+        val resolvedFitMode = fitMode ?: automatic!!.fitMode
+        val resolvedEnvelope = animationEnvelope ?: automatic?.animationEnvelope
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
         // `computeContentBounds` re-expresses each subtree in the reference's local space.
@@ -678,7 +688,7 @@ class SceneAutoFitState {
             gate.recordNoContent()
             return false
         }
-        if (fitMode == FitMode.Silhouette || animationEnvelope != null) {
+        if (resolvedFitMode == FitMode.Silhouette || resolvedEnvelope != null) {
             // The union above is reference-local. The directional fit and camera pose are world
             // space: re-box the transformed corners before selecting the silhouette probes.
             val transform = reference.worldTransform
@@ -689,14 +699,14 @@ class SceneAutoFitState {
             )
             val fill = 1f / (1f + max(0f, padding))
             val fit = cameraNode.fitToBounds(
-                worldBounds, widthFill = fill, heightFill = fill, fitMode = fitMode,
-                animationEnvelope = animationEnvelope
+                worldBounds, widthFill = fill, heightFill = fill, fitMode = resolvedFitMode,
+                animationEnvelope = resolvedEnvelope
             )
             if (fit == null) {
                 gate.recordNoContent()
                 return false
             }
-            val diagonal = animationEnvelope?.bounds?.toAabb()?.diagonal ?: bounds.diagonal
+            val diagonal = resolvedEnvelope?.bounds?.toAabb()?.diagonal ?: bounds.diagonal
             val framed = gate.shouldFrame(diagonal)
             if (framed) {
                 cameraNode.frame(fit)

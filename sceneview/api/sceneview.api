@@ -3130,11 +3130,17 @@ public final class io/github/sceneview/model/AnimationEnvelope {
 public final class io/github/sceneview/model/AnimationEnvelopeKt {
 	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;II)Lio/github/sceneview/model/AnimationEnvelope;
 	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;I)Lio/github/sceneview/model/AnimationEnvelope;
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Collection;I)Lio/github/sceneview/model/AnimationEnvelope;
 	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;IIILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/util/Collection;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 }
 
 public final class io/github/sceneview/model/ModelInstanceKt {
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentInstance;II)Lio/github/sceneview/model/AnimationEnvelope;
+	public static final fun animationEnvelope (Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/String;I)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentInstance;IIILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/String;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 	public static final fun attachSkin (Lcom/google/android/filament/gltfio/FilamentInstance;Lio/github/sceneview/node/Node;I)V
 	public static synthetic fun attachSkin$default (Lcom/google/android/filament/gltfio/FilamentInstance;Lio/github/sceneview/node/Node;IILjava/lang/Object;)V
 	public static final fun detachSkin (Lcom/google/android/filament/gltfio/FilamentInstance;Lio/github/sceneview/node/Node;I)V
@@ -3477,6 +3483,10 @@ public class io/github/sceneview/node/ModelNode : io/github/sceneview/node/Node 
 	public static final field $stable I
 	public fun <init> (Lcom/google/android/filament/gltfio/FilamentInstance;ZLjava/lang/Float;Ldev/romainguy/kotlin/math/Float3;)V
 	public synthetic fun <init> (Lcom/google/android/filament/gltfio/FilamentInstance;ZLjava/lang/Float;Ldev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun animationEnvelope (II)Lio/github/sceneview/model/AnimationEnvelope;
+	public final fun animationEnvelope (Ljava/lang/String;I)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lio/github/sceneview/node/ModelNode;IIILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
+	public static synthetic fun animationEnvelope$default (Lio/github/sceneview/node/ModelNode;Ljava/lang/String;IILjava/lang/Object;)Lio/github/sceneview/model/AnimationEnvelope;
 	public final fun attachSkin (Lio/github/sceneview/node/Node;I)V
 	public static synthetic fun attachSkin$default (Lio/github/sceneview/node/ModelNode;Lio/github/sceneview/node/Node;IILjava/lang/Object;)V
 	public final fun centerOrigin (Ldev/romainguy/kotlin/math/Float3;)V

@@ -167,12 +167,15 @@ import io.github.sceneview.node.setEnvironmentLight
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
- * @param animationEnvelope   Optional world-space pose boxes for [autoFitContent]. Compute with
- *                            `Model.animationEnvelope`, then transform by the model node's world
- *                            transform after centering/scaling. No poses are sampled by default.
- * @param fitMode              Points fitted by [autoFitContent]. Defaults to [FitMode.Corners],
- *                              preserving historical framing. Opt in to [FitMode.Silhouette] for
- *                              organic subjects; it can crop box-shaped products at their corners.
+ * @param animationEnvelope   Optional world-space pose boxes for [autoFitContent]. In automatic
+ *                            mode this overrides the computed envelope without changing mode
+ *                            selection. Compute with `Model.animationEnvelope`, then transform by
+ *                            the model node's world transform after centering/scaling.
+ * @param fitMode              Points fitted by [autoFitContent]. Automatic (`null`) selects
+ *                              [FitMode.Silhouette] and the playing clips' envelope (or all clips,
+ *                              up to eight) when every rendered model is skinned and animated and
+ *                              nothing else renders; [FitMode.Corners] otherwise. Pass
+ *                              [FitMode.Corners] to opt out.
  * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
  *                              *fraction* of the fit distance — `0.15` (the default,
  *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
@@ -381,7 +384,13 @@ fun SceneView(
      * [autoFitContent] is `true`.
      */
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners,
+    /**
+     * `null` automatically uses silhouette fitting and sampled clip envelopes only when all
+     * rendered content is skinned and animated; otherwise it uses corners. Pass
+     * [FitMode.Corners] to opt out of automatic selection.
+     */
+    fitMode: FitMode? = null,
+    /** Overrides the computed world-space envelope without disabling automatic mode selection. */
     animationEnvelope: AnimationEnvelope? = null,
     /**
      * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
@@ -2596,7 +2605,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners,
+    fitMode: FitMode? = null,
     animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     clipToContentPadding: Boolean = false,
@@ -2682,7 +2691,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners,
+    fitMode: FitMode? = null,
     animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     clipToContentPadding: Boolean = false,
@@ -2764,7 +2773,7 @@ fun Scene(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners,
+    fitMode: FitMode? = null,
     animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     clipToContentPadding: Boolean = false,

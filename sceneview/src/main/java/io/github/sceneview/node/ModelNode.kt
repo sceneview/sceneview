@@ -21,6 +21,8 @@ import io.github.sceneview.math.Size
 import io.github.sceneview.math.Transform
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.model.animationEnvelope
 import io.github.sceneview.model.camerasEntities
 import io.github.sceneview.model.collisionShape
 import io.github.sceneview.model.emptyNodeEntities
@@ -336,6 +338,23 @@ open class ModelNode(
             checkModelAlive("animationCount")
             return animator.animationCount
         }
+
+    /**
+     * Estimates a skinned animation clip's occupied volume in model space.
+     *
+     * Results are cached per asset, clip and bounded [samples] count. Use [AnimationEnvelope.transformed]
+     * with this node's [worldTransform] before passing it to world-space camera framing.
+     */
+    fun animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope {
+        checkModelAlive("animationEnvelope")
+        return model.animationEnvelope(clip, samples)
+    }
+
+    /** Exact-name overload of [animationEnvelope]. Unknown names fall back to the rest-pose box. */
+    fun animationEnvelope(clip: String, samples: Int = 24): AnimationEnvelope {
+        checkModelAlive("animationEnvelope")
+        return model.animationEnvelope(clip, samples)
+    }
 
     /**
      * The animations in flight, by animation index. Filled by [playAnimation], emptied by

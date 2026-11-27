@@ -3,6 +3,9 @@ package io.github.sceneview.loaders
 import com.google.android.filament.Box
 import io.github.sceneview.model.AnimationEnvelope
 import io.github.sceneview.model.AnimationEnvelopes
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+import io.github.sceneview.node.FilamentWithoutJni
 import io.github.sceneview.toAabb
 import org.json.JSONArray
 import org.json.JSONObject
@@ -128,6 +131,24 @@ class GltfAnimationEnvelopeTest {
         } finally { results.shutdown() }
         for (n in 4..20) entry.envelope(0, n)
         assertNotSame(envelope, entry.envelope(0, 3)) // Evicted, recomputed.
+    }
+
+    @Test fun `multiple clips keep every sample and one rest pose`() {
+        val data = rig().animationData()!!
+        val clips = listOf(data.clipIndex("Walk"), data.clipIndex("Turn"))
+        val model = FilamentWithoutJni.modelInstance(FilamentWithoutJni.engine()).model
+        AnimationEnvelopes.record(model, data, rest)
+        try {
+            val envelope = model.animationEnvelope(clips, 24)
+            assertEquals(1 + 24 * clips.size, envelope.poses.size)
+            clips.forEach { clip ->
+                assertContains(envelope.bounds, model.animationEnvelope(clip, 24).bounds)
+            }
+            assertEquals(1, model.animationEnvelope(emptyList(), 24).poses.size)
+            assertEquals(1, model.animationEnvelope(listOf(-1, 999), 24).poses.size)
+        } finally {
+            AnimationEnvelopes.forget(model)
+        }
     }
 
     @Test fun `fox run and walk exceed the rest width and report retained cost when asset exists`() {

@@ -67,7 +67,9 @@ private fun Aabb.toBox() = Box(center.x, center.y, center.z, halfExtent.x, halfE
  * No skin, no clip, an unknown [clip], unsupported animation data (sparse, meshopt or embedded
  * data-URI accessors), or a parse/sample failure returns only [restPoseBoundingBox]. Models made
  * outside `ModelLoader` also fall back; that case reads Filament's box and requires the main thread.
- * No animation envelope or fitting mode is selected automatically.
+ * `SceneView(autoFitContent = true)` automatically selects this envelope and silhouette fitting
+ * when every rendered model is skinned and animated and no other content renders. Pass
+ * `FitMode.Corners` to opt out of that automatic selection.
  */
 fun Model.animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope =
     AnimationEnvelopes[this]?.envelope(clip, samples) ?: AnimationEnvelope(listOf(restPoseBoundingBox))
@@ -77,13 +79,30 @@ fun Model.animationEnvelope(clip: String, samples: Int = 24): AnimationEnvelope 
     AnimationEnvelopes[this]?.let { it.envelope(it.data?.clipIndex(clip) ?: -1, samples) }
         ?: AnimationEnvelope(listOf(restPoseBoundingBox))
 
+/**
+ * Estimates the occupied volume of every listed animation clip while keeping every sampled pose
+ * as a separate box. The rest-pose box appears once, first. Empty collections and collections
+ * containing only unknown clips return the rest-pose box.
+ *
+ * This has the same sampling, fallback, caching and threading contract as
+ * [animationEnvelope] for one clip.
+ */
+fun Model.animationEnvelope(clips: Collection<Int>, samples: Int = 24): AnimationEnvelope =
+    AnimationEnvelopes[this]?.envelope(clips, samples)
+        ?: AnimationEnvelope(listOf(restPoseBoundingBox))
+
 /** Does not retain the model, JSON, source buffers, resource resolver or native handles. */
 internal object AnimationEnvelopes {
     private val models = WeakHashMap<Model, Entry>()
 
     @Synchronized
     fun record(model: Model, data: GltfAnimationData?) {
-        models[model] = Entry(data, AnimationEnvelope(listOf(model.restPoseBoundingBox)))
+        record(model, data, model.restPoseBoundingBox)
+    }
+
+    @Synchronized
+    internal fun record(model: Model, data: GltfAnimationData?, restPoseBoundingBox: Box) {
+        models[model] = Entry(data, AnimationEnvelope(listOf(restPoseBoundingBox)))
     }
 
     @Synchronized
@@ -108,6 +127,16 @@ internal object AnimationEnvelopes {
                 if (cache.size >= 8) cache.remove(cache.keys.first())
                 result
             }
+        }
+
+        @Synchronized
+        fun envelope(clips: Collection<Int>, samples: Int): AnimationEnvelope {
+            val poses = mutableListOf(rest.poseBounds.first())
+            clips.forEach { clip ->
+                val sampled = envelope(clip, samples)
+                if (sampled !== rest) poses += sampled.poseBounds.drop(1)
+            }
+            return AnimationEnvelope(poses.map { it.toBox() })
         }
     }
 }
