@@ -117,9 +117,9 @@
   :root { --gutter: 24px; --section-y: 96px; }
 }
 
-/* ── Colour roles, dark ─────────────────────────────────────
- * The same block twice: the OS preference (unless the visitor picked light),
- * and the visitor's pick. */
+/* ── Colour roles, dark (default dark-first obsidian studio polish) ─────
+ * Dark on :root[data-theme="dark"] (applied by default in head unless light is
+ * picked) and when OS prefers dark without [data-theme="light"]. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
@@ -129,8 +129,8 @@
     --md-sys-color-on-primary-container: #C9D9FF;
     --md-sys-color-secondary: #B3C6F4;
     --md-sys-color-on-secondary: #1B3055;
-    --md-sys-color-secondary-container: #33466D;
-    --md-sys-color-on-secondary-container: #A1B5E2;
+    --md-sys-color-secondary-container: #24365C;
+    --md-sys-color-on-secondary-container: #D3E1FF;
     --md-sys-color-tertiary: #FFB595;
     --md-sys-color-on-tertiary: #571E00;
     --md-sys-color-tertiary-container: #A33F00;
@@ -139,20 +139,20 @@
     --md-sys-color-on-error: #690005;
     --md-sys-color-error-container: #93000A;
     --md-sys-color-on-error-container: #FFDAD6;
-    --md-sys-color-surface: #11131A;
-    --md-sys-color-surface-dim: #11131A;
-    --md-sys-color-surface-bright: #373940;
-    --md-sys-color-surface-container-lowest: #0C0E14;
-    --md-sys-color-surface-container-low: #191B22;
-    --md-sys-color-surface-container: #1D2026;
-    --md-sys-color-surface-container-high: #272A31;
-    --md-sys-color-surface-container-highest: #32353C;
-    --md-sys-color-on-surface: #E1E2EB;
-    --md-sys-color-on-surface-variant: #C2C6D5;
-    --md-sys-color-outline: #8C909E;
-    --md-sys-color-outline-variant: #424753;
-    --md-sys-color-inverse-surface: #E1E2EB;
-    --md-sys-color-inverse-on-surface: #2E3037;
+    --md-sys-color-surface: #0B0E16;
+    --md-sys-color-surface-dim: #0B0E16;
+    --md-sys-color-surface-bright: #2F364B;
+    --md-sys-color-surface-container-lowest: #07090F;
+    --md-sys-color-surface-container-low: #101420;
+    --md-sys-color-surface-container: #151A28;
+    --md-sys-color-surface-container-high: #1C2233;
+    --md-sys-color-surface-container-highest: #242B3E;
+    --md-sys-color-on-surface: #EEF1FA;
+    --md-sys-color-on-surface-variant: #AEB8CF;
+    --md-sys-color-outline: #6B758E;
+    --md-sys-color-outline-variant: #273046;
+    --md-sys-color-inverse-surface: #EEF1FA;
+    --md-sys-color-inverse-on-surface: #1A1E29;
     --md-sys-color-inverse-primary: #005BC0;
     --md-sys-color-success: #73DC82;
     --md-sys-color-on-success: #003912;
@@ -162,7 +162,7 @@
     --md-sys-color-on-warning: #502500;
     --md-sys-color-warning-container: #713700;
     --md-sys-color-on-warning-container: #FFDCC6;
-    --stage-shadow-a: .7;
+    --stage-shadow-a: .75;
   }
 }
 :root[data-theme="dark"] {
@@ -173,8 +173,8 @@
   --md-sys-color-on-primary-container: #C9D9FF;
   --md-sys-color-secondary: #B3C6F4;
   --md-sys-color-on-secondary: #1B3055;
-  --md-sys-color-secondary-container: #33466D;
-  --md-sys-color-on-secondary-container: #A1B5E2;
+  --md-sys-color-secondary-container: #24365C;
+  --md-sys-color-on-secondary-container: #D3E1FF;
   --md-sys-color-tertiary: #FFB595;
   --md-sys-color-on-tertiary: #571E00;
   --md-sys-color-tertiary-container: #A33F00;
@@ -183,20 +183,20 @@
   --md-sys-color-on-error: #690005;
   --md-sys-color-error-container: #93000A;
   --md-sys-color-on-error-container: #FFDAD6;
-  --md-sys-color-surface: #11131A;
-  --md-sys-color-surface-dim: #11131A;
-  --md-sys-color-surface-bright: #373940;
-  --md-sys-color-surface-container-lowest: #0C0E14;
-  --md-sys-color-surface-container-low: #191B22;
-  --md-sys-color-surface-container: #1D2026;
-  --md-sys-color-surface-container-high: #272A31;
-  --md-sys-color-surface-container-highest: #32353C;
-  --md-sys-color-on-surface: #E1E2EB;
-  --md-sys-color-on-surface-variant: #C2C6D5;
-  --md-sys-color-outline: #8C909E;
-  --md-sys-color-outline-variant: #424753;
-  --md-sys-color-inverse-surface: #E1E2EB;
-  --md-sys-color-inverse-on-surface: #2E3037;
+  --md-sys-color-surface: #0B0E16;
+  --md-sys-color-surface-dim: #0B0E16;
+  --md-sys-color-surface-bright: #2F364B;
+  --md-sys-color-surface-container-lowest: #07090F;
+  --md-sys-color-surface-container-low: #101420;
+  --md-sys-color-surface-container: #151A28;
+  --md-sys-color-surface-container-high: #1C2233;
+  --md-sys-color-surface-container-highest: #242B3E;
+  --md-sys-color-on-surface: #EEF1FA;
+  --md-sys-color-on-surface-variant: #AEB8CF;
+  --md-sys-color-outline: #6B758E;
+  --md-sys-color-outline-variant: #273046;
+  --md-sys-color-inverse-surface: #EEF1FA;
+  --md-sys-color-inverse-on-surface: #1A1E29;
   --md-sys-color-inverse-primary: #005BC0;
   --md-sys-color-success: #73DC82;
   --md-sys-color-on-success: #003912;
@@ -206,7 +206,7 @@
   --md-sys-color-on-warning: #502500;
   --md-sys-color-warning-container: #713700;
   --md-sys-color-on-warning-container: #FFDCC6;
-  --stage-shadow-a: .7;
+  --stage-shadow-a: .75;
 }
 
 /* ── Derived names ──────────────────────────────────────────

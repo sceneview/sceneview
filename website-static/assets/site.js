@@ -333,15 +333,15 @@
     else on(window, 'load', function () { doc.classList.add('is-loaded'); });
 
     /* Theme */
-    // Light is the default set (tokens.css): dark only when picked or asked for by the system.
+    // Dark-first obsidian studio default (head inline script sets data-theme="dark" unless light was picked).
     var mqDark = matchMedia('(prefers-color-scheme: dark)');
-    function effectiveTheme() { return doc.dataset.theme || (mqDark.matches ? 'dark' : 'light'); }
+    function effectiveTheme() { return doc.dataset.theme || 'dark'; }
     function labelTheme() { $$('.theme-toggle').forEach(function (b) { b.setAttribute('aria-label', effectiveTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); }); }
     $$('.theme-toggle').forEach(function (b) {
       on(b, 'click', function () { var next = effectiveTheme() === 'dark' ? 'light' : 'dark'; doc.dataset.theme = next; store('sceneview-theme', next); labelTheme(); });
     });
     labelTheme();
-    on(mqDark, 'change', labelTheme);   // the label follows the system while no theme is picked
+    on(mqDark, 'change', labelTheme);
 
     /* Mobile sheet, with a focus trap */
     var sheet = $('#menu'), opener = null;
@@ -651,43 +651,73 @@
       on(tok, 'keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
     });
 
-    /* Scroll: header state, hero pin (desktop) and parallax (phone). */
-    var nav = $('.nav'), hero = $('.hero'), pin = hero && $('.hero__pin', hero);
-    var heroStage = hero && $('[data-stage]', hero);
-    // Same query as the CSS (.hero pin): one source of truth for when the hero is pinned.
-    var mqFx = matchMedia('(min-width: 960px) and (min-height: 600px) and (prefers-reduced-motion: no-preference)');
-    var scrollFx = !!hero && mqFx.matches;
-    if (hero) hero.classList.toggle('has-scroll-fx', scrollFx);
-    var specs = hero ? $$('.hero__specs li', hero) : [];
-    // --p goes on the two blocks that read it, not on .hero: a custom property set on the
-    // hero restyled its whole subtree (canvas, chips, specs) on every scroll frame.
-    var pTargets = hero ? $$('.hero__copy, .hero__stage', hero) : [];
-    var lastP = -1, ticking = false;
+    /* Hero stage switcher (AR Dragon Live <-> Interactive 3D WebGL) + Dragon Sound button */
+    var dragonVid = $('#dragon-hero-video');
+    var soundBtn = $('#dragon-sound-btn');
+    var heroStageEl = $('#hero-stage');
+    if (dragonVid) {
+      if (caps.reduced || caps.reducedData) {
+        dragonVid.removeAttribute('autoplay');
+        dragonVid.pause();
+        dragonVid.controls = true;
+      }
+      if (soundBtn) {
+        var setSoundLabel = function () {
+          var muted = dragonVid.muted;
+          soundBtn.setAttribute('aria-pressed', String(!muted));
+          soundBtn.classList.toggle('is-unmuted', !muted);
+          soundBtn.textContent = muted ? '🔊 Sound' : '🔇 Mute';
+          soundBtn.setAttribute('aria-label', muted ? 'Enable sound on AR Dragon video' : 'Mute AR Dragon video');
+        };
+        on(soundBtn, 'click', function () {
+          var showcaseSrc = dragonVid.dataset.soundSrc;
+          var wantSound = dragonVid.muted;
+          if (wantSound && showcaseSrc && dragonVid.getAttribute('src') !== showcaseSrc) {
+            dragonVid.src = showcaseSrc;
+            dragonVid.load();
+          }
+          dragonVid.muted = !wantSound;
+          if (wantSound) {
+            dragonVid.volume = 1;
+            var p = dragonVid.play();
+            if (p && p.catch) p.catch(function () {});
+          }
+          setSoundLabel();
+        });
+        on(dragonVid, 'volumechange', setSoundLabel);
+        setSoundLabel();
+      }
+    }
+    var heroTabs = $('[data-hero-mode]');
+    if (heroTabs) {
+      on(heroTabs, 'sv:tab', function (e) {
+        var mode = e.detail && e.detail.key;
+        if (mode === 'dragon') {
+          if (dragonVid && !caps.reduced && !caps.reducedData) {
+            var p = dragonVid.play();
+            if (p && p.catch) p.catch(function () {});
+          }
+        } else if (mode === 'webgl') {
+          if (dragonVid) {
+            dragonVid.muted = true;
+            dragonVid.pause();
+          }
+          if (heroStageEl && !heroStageEl._sv && !heroStageEl.classList.contains('is-loading')) {
+            requestAnimationFrame(function () { goLive(heroStageEl); });
+          }
+        }
+      });
+    }
+
+    /* Scroll: top app bar frosted elevation on scroll. */
+    var nav = $('.nav');
+    var ticking = false;
     function frame() {
       ticking = false;
-      // Every read before any write: one layout per frame, never a forced one.
-      var y = scrollY, r = hero && hero.getBoundingClientRect(), p = 0;
-      // M3 top app bar: surface at rest, surface-container once content scrolls under it.
-      if (nav) nav.classList.toggle('is-scrolled', y > 8);
-      if (!hero) return;
-      if (scrollFx) p = clamp(-r.top / Math.max(1, r.height - innerHeight), 0, 1);
-      else p = clamp(-r.top / Math.max(1, r.height), 0, 1);
-      if (p === lastP) return;            // past the hero: nothing left to move
-      var pv = p.toFixed(4);
-      pTargets.forEach(function (el) { el.style.setProperty('--p', pv); });
-      hero.classList.toggle('is-copy-out', scrollFx && p >= 0.25);
-      specs.forEach(function (li, i) { li.classList.toggle('is-on', p > 0.28 + i * 0.16); });
-      // Live: the scroll turns the model (about 1.6 rad over the pin); a scene turns its camera.
-      if (heroStage && heroStage.dataset.scene) {
-        var turn = scrollFx ? p * 1.2 : 0;
-        if (turn !== heroStage._turn) { heroStage._turn = turn; if (heroStage._scene) heroStage._scene.setTurn(turn); }
-      } else if (scrollFx && heroStage && heroStage._sv && lastP >= 0) { var hsv = heroStage._sv; hsv.setCameraOrbit({ angle: hsv.getCameraOrbit().angle + (p - lastP) * 1.6 }); }
-      lastP = p;
+      if (nav) nav.classList.toggle('is-scrolled', scrollY > 8);
     }
     on(window, 'scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(frame); } }, { passive: true });
     on(window, 'resize', function () {
-      var want = !!hero && mqFx.matches;
-      if (hero && want !== scrollFx) { scrollFx = want; hero.classList.toggle('has-scroll-fx', want); lastP = -1; }
       $$('[data-scene]').forEach(frameScene);
       frame();
     });

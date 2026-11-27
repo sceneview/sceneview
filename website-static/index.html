@@ -8,20 +8,24 @@
     (function () {
       var d = document.documentElement; d.classList.add('js');
       try {
-        var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('sceneview-theme');
-        if (t === 'light' || t === 'dark') d.dataset.theme = t;
-      } catch (e) {}
+        var q = new URLSearchParams(location.search).get('theme');
+        var s = localStorage.getItem('sceneview-theme');
+        var t = (q === 'light' || q === 'dark') ? q : (s === 'light' || s === 'dark') ? s : 'dark';
+        d.dataset.theme = t;
+      } catch (e) {
+        d.dataset.theme = 'dark';
+      }
     })();
   </script>
   <!-- Site analytics: GA4 loader shared by every static page. Synchronous on purpose. -->
   <script src="/assets/analytics.js"></script>
   <script src="/assets/support.js" defer></script>
-  <title>SceneView — 3D and AR for Android, web and desktop</title>
-  <meta name="description" content="SceneView maintains declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0.">
+  <title>SceneView — Declarative 3D &amp; AR for Jetpack Compose, Web &amp; Desktop</title>
+  <meta name="description" content="Declarative 3D and AR for Jetpack Compose (Filament + ARCore), Web, and Compose Multiplatform. Open source, Apache 2.0.">
   <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, ARCore, Filament, Android 3D, model viewer, glTF, GLB, Sceneform, Compose Multiplatform, MCP server, llms.txt">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#11131A" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0B0E16" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#F9F9FF" media="(prefers-color-scheme: light)">
 
   <link rel="canonical" href="https://sceneview.github.io/">
@@ -38,25 +42,24 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="SceneView">
   <meta property="og:locale" content="en_US">
-  <meta property="og:title" content="SceneView — 3D and AR, written like UI">
-  <meta property="og:description" content="Declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. Open source, Apache 2.0.">
+  <meta property="og:title" content="SceneView — Declarative 3D &amp; AR, written like UI">
+  <meta property="og:description" content="Declarative 3D and AR for Jetpack Compose (Filament + ARCore), Web, and Compose Multiplatform. Open source, Apache 2.0.">
   <meta property="og:url" content="https://sceneview.github.io/">
-  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
-  <meta property="og:image:alt" content="SceneView — 3D and AR for Android, web and desktop">
+  <meta property="og:image" content="https://sceneview.github.io/og-2026-11.png">
+  <meta property="og:image:alt" content="SceneView — Declarative 3D &amp; AR for Jetpack Compose, Web, and Compose Multiplatform">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SceneView — 3D and AR, written like UI">
-  <meta name="twitter:description" content="Declarative 3D and AR for Android (Compose), web and Compose Multiplatform desktop. Open source, Apache 2.0.">
-  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
-  <meta name="twitter:image:alt" content="SceneView — 3D and AR for Android, web and desktop">
+  <meta name="twitter:title" content="SceneView — Declarative 3D &amp; AR, written like UI">
+  <meta name="twitter:description" content="Declarative 3D and AR for Jetpack Compose (Filament + ARCore), Web, and Compose Multiplatform. Open source, Apache 2.0.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-2026-11.png">
+  <meta name="twitter:image:alt" content="SceneView — Declarative 3D &amp; AR for Jetpack Compose, Web, and Compose Multiplatform">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-sq-960.webp" imagesrcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" imagesizes="44vw" media="(min-width: 960px) and (min-height: 600px)" fetchpriority="high">
-  <link rel="preload" as="image" href="assets/home/hero-smeg-toaster-wide-960.webp" imagesrcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w" imagesizes="100vw" media="not ((min-width: 960px) and (min-height: 600px))" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/home/dragon-poster.jpg" fetchpriority="high">
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/fit.js" defer></script>
@@ -68,7 +71,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "SceneView",
-    "description": "Open-source SDK for declarative 3D and AR with Jetpack Compose on Android, the web and Compose Multiplatform desktop. SwiftUI, Flutter and React Native are end of life at 4.68.0.",
+    "description": "Declarative 3D and AR for Jetpack Compose (Filament + ARCore), Web, and Compose Multiplatform. Open source, Apache 2.0.",
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, Web, Desktop (Compose Multiplatform)",
@@ -77,7 +80,7 @@
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
     "codeRepository": "https://github.com/sceneview/sceneview",
-    "programmingLanguage": ["Kotlin", "Swift", "JavaScript", "TypeScript", "Dart"]
+    "programmingLanguage": ["Kotlin", "JavaScript", "TypeScript"]
   }
   </script>
   <script type="application/ld+json">
@@ -169,73 +172,82 @@
 
 <main id="main">
 
-  <!-- 1 · HERO — a model rendered live by SceneView Web on a transparent canvas, over a square
-       media card on the page's own surface. Poster first; a desktop goes live when idle, a
-       phone on tap. Desktop ≥ 960 (no reduced motion): the hero is pinned for one extra screen;
-       scrolling turns the model and walks through the calls the page uses. A phone shows the
-       title first, then the picture (site.css, hero). The fit (data-bbox …) is assets/fit.js. -->
+  <!-- 1 · HERO — Spatial AR Dragon live showcase with Interactive 3D WebGL switcher
+       and active Android / Web / Desktop quick install tabs. -->
   <section class="hero" aria-labelledby="hero-title">
-    <div class="hero__pin">
-      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/smeg_toaster_homepage_meshopt.glb"
-           data-bbox="-0.155,0,-0.0925,0.155,0.2021,0.0925" data-hull="box" data-elev="0.22" data-angle="0.55" data-fill="0.8" data-top="0.55" data-bottom="-0.62"
-           data-autoload="idle" data-mobile="tap">
-        <div class="stage__box">
-          <div class="stage__frame">
-            <picture>
-              <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" sizes="44vw" width="960" height="960">
-              <img class="stage__poster" src="assets/home/hero-smeg-toaster-wide-960.webp" srcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w"
-                   sizes="100vw" width="960" height="600" fetchpriority="high"
-                   alt="A pastel green SMEG two-slice toaster with a chrome base and lever, rendered by SceneView Web.">
-            </picture>
-            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a SMEG toaster. Drag sideways to turn it."></canvas>
-          </div>
+    <div class="container hero__inner">
+      <div class="hero__copy">
+        <div class="hero__eyebrow"><span class="hero__eyebrow-dot" aria-hidden="true"></span><span>Compose · Filament + ARCore · WebGL2</span></div>
+        <h1 class="display" id="hero-title">Declarative 3D and AR, written like UI</h1>
+        <p class="lead">SceneView brings real-time 3D and AR to Jetpack Compose with Filament and ARCore, the browser with WebGL2, and Compose Multiplatform desktop — declared in code like the rest of your UI.</p>
+        <div class="hero__ctas">
+          <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
+          <a class="btn btn--outlined btn--lg" href="/web-demo/">Try in browser</a>
         </div>
-        <div class="stage__bar">
-          <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1">SMEG toaster</a> by The Fresh Lab, CC&nbsp;BY&nbsp;4.0</p>
-          <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
-          <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+        <ul class="hero__meta">
+          <li>Open source under Apache 2.0</li>
+          <li hidden><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
+        </ul>
+        <div class="install">
+          <div class="seg" role="tablist" aria-label="Install for" data-install>
+            <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
+            <button type="button" role="tab" id="it-web" aria-controls="ins-web" aria-selected="false" tabindex="-1" data-key="web" data-label="Web" data-href="/docs/quickstart-web/">Web</button>
+            <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
+          </div>
+          <div class="install__panels">
+            <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.76.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.76.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.76.0/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.76.0/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.76.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.76.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+          </div>
+          <a class="install__next link" href="/docs/quickstart/" data-start><span data-start-label>Android quickstart</span></a>
         </div>
       </div>
 
-      <div class="container hero__inner">
-        <div class="hero__copy">
-          <h1 class="display" id="hero-title">Declarative 3D and AR for Android, web and desktop</h1>
-          <p class="lead">SceneView renders 3D models and AR scenes in Android apps with Jetpack Compose, plus 3D on the web and Compose Multiplatform desktop. Scenes are declared in code, like the rest of the UI.</p>
-          <div class="hero__ctas">
-            <a class="btn btn--filled btn--lg" href="/docs/quickstart/" data-start>Get started</a>
-            <a class="btn btn--outlined btn--lg" href="/web-demo/">Try in browser</a>
+      <div class="hero__media">
+        <div class="hero-stage-shell">
+          <div class="hero-mode" role="tablist" aria-label="Hero showcase mode" data-hero-mode>
+            <button type="button" class="hero-mode__tab" role="tab" id="hm-dragon" aria-controls="hero-panel-dragon" aria-selected="true" data-key="dragon"><span class="hero-mode__dot" aria-hidden="true"></span>AR Dragon (Live)</button>
+            <button type="button" class="hero-mode__tab" role="tab" id="hm-webgl" aria-controls="hero-panel-webgl" aria-selected="false" tabindex="-1" data-key="webgl"><svg aria-hidden="true"><use href="#i-cube"/></svg>Interactive 3D WebGL</button>
           </div>
-          <ul class="hero__meta">
-            <li>Open source under Apache 2.0</li>
-            <li hidden><a class="link" href="https://github.com/sceneview/sceneview/releases/latest" data-release>Latest release</a></li>
-          </ul>
-          <p class="plat-note hero__eol-note">SwiftUI (iOS, macOS, visionOS), Flutter and React Native are end of life. 4.68.0 (November 2026) is the last release. No new releases. <a href="https://github.com/sceneview/sceneview/blob/main/DEPRECATION.md">DEPRECATION.md</a>.</p>
-          <div class="install">
-            <div class="seg" role="tablist" aria-label="Install for" data-install>
-              <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
-              <button type="button" role="tab" id="it-web" aria-controls="ins-web" aria-selected="false" tabindex="-1" data-key="web" data-label="Web" data-href="/docs/quickstart-web/">Web</button>
-              <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
-              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple (end of life)" data-href="/docs/quickstart-ios/">Apple (end of life)</button>
-              <button type="button" role="tab" id="it-flutter" aria-controls="ins-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-label="Flutter (end of life)" data-href="/docs/quickstart-flutter/">Flutter (end of life)</button>
-              <button type="button" role="tab" id="it-rn" aria-controls="ins-rn" aria-selected="false" tabindex="-1" data-key="rn" data-label="React Native (end of life)" data-href="/docs/quickstart-react-native/">React Native (end of life)</button>
+
+          <div id="hero-panel-dragon" role="tabpanel" aria-labelledby="hm-dragon">
+            <div class="dragon-stage">
+              <img class="dragon-stage__backdrop" src="assets/home/dragon-poster.jpg" alt="" aria-hidden="true">
+              <div class="dragon-stage__viewport">
+                <video id="dragon-hero-video" class="dragon-stage__video" src="assets/home/dragon-hero.mp4" data-sound-src="assets/home/dragon-showcase.mp4" poster="assets/home/dragon-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="Living AR Dragon anchored at 1:1 scale on a real room floor using ARCore and Filament"></video>
+                <div class="dragon-stage__hud"><span class="dragon-stage__hud-dot" aria-hidden="true"></span><span>ARCore + Filament · 1:1</span></div>
+              </div>
+              <button id="dragon-sound-btn" class="dragon-sound-btn" type="button" aria-pressed="false" aria-label="Enable sound on AR Dragon video">🔊 Sound</button>
             </div>
-            <div class="install__panels">
-            <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.76.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.76.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode: File, Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.68.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.76.0/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.76.0/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.76.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview:4.68.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview:4.68.0'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native@4.68.0</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native@4.68.0&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.76.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.76.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="hero-stage__foot">
+              <span>1:1 floor anchor &amp; cast shadows</span>
+              <a href="https://thomasgorisse.github.io/arcamera/dragon/">Watch the full AR Dragon story</a>
             </div>
-            <a class="install__next link" href="/docs/quickstart/" data-start><span data-start-label>Android quickstart</span></a>
+          </div>
+
+          <div id="hero-panel-webgl" role="tabpanel" aria-labelledby="hm-webgl" hidden>
+            <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/smeg_toaster_homepage_meshopt.glb"
+                 data-bbox="-0.155,0,-0.0925,0.155,0.2021,0.0925" data-hull="box" data-elev="0.22" data-angle="0.55" data-fill="0.8" data-top="0.55" data-bottom="-0.62"
+                 data-autoload="tap" data-mobile="tap">
+              <div class="stage__box">
+                <div class="stage__frame">
+                  <picture>
+                    <source media="(min-width: 960px) and (min-height: 600px)" srcset="assets/home/hero-smeg-toaster-sq-640.webp 640w, assets/home/hero-smeg-toaster-sq-960.webp 960w" sizes="44vw" width="960" height="960">
+                    <img class="stage__poster" src="assets/home/hero-smeg-toaster-wide-960.webp" srcset="assets/home/hero-smeg-toaster-wide-640.webp 640w, assets/home/hero-smeg-toaster-wide-960.webp 960w"
+                         sizes="100vw" width="960" height="600" loading="lazy"
+                         alt="A pastel green SMEG two-slice toaster with a chrome base and lever, rendered by SceneView Web.">
+                  </picture>
+                  <canvas class="stage__canvas" role="img" aria-label="Interactive 3D model: a SMEG toaster. Drag sideways to turn it."></canvas>
+                </div>
+              </div>
+              <div class="stage__bar">
+                <p class="stage__credit credit"><a href="https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1">SMEG toaster</a> by The Fresh Lab, CC&nbsp;BY&nbsp;4.0</p>
+                <button class="stage__load btn btn--text" type="button"><svg><use href="#i-cube"/></svg>View in 3D</button>
+                <button class="stage__pause icon-btn" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+              </div>
+            </div>
           </div>
         </div>
-
-        <ol class="hero__specs" aria-label="What the page uses">
-          <li><b>A transparent canvas on the page</b><code>SceneView.create(canvas, { transparent: true })</code></li>
-          <li><b>A turntable rotation</b><code>setAutoRotate(true)</code></li>
-          <li><b>Image-based lighting</b><code>iblUrl, iblIntensity</code></li>
-        </ol>
       </div>
     </div>
   </section>
@@ -342,6 +354,63 @@
     </div>
   </section>
 
+  <!-- 2a · BUILT WITH SCENEVIEW — flagship real-world apps and spatial AR demos -->
+  <section class="section" id="built-with" aria-labelledby="built-with-title">
+    <div class="container">
+      <div class="section__head">
+        <h2 class="h2 reveal" id="built-with-title">Built with SceneView</h2>
+        <p class="lead reveal">Real-world AR placements, standalone model tools, and spatial clearance apps powered by SceneView and Filament.</p>
+      </div>
+      <div class="showcase-grid">
+        <article class="showcase-card reveal">
+          <div class="showcase-card__media showcase-card__media--dragon">
+            <img src="assets/home/dragon-poster.jpg" alt="A green 3D dragon anchored at 1:1 scale on a wooden living room floor with real cast shadows." width="720" height="1280" loading="lazy">
+            <span class="showcase-card__badge"><span class="dragon-stage__hud-dot" aria-hidden="true"></span>ARCore · 1:1 Scale</span>
+          </div>
+          <div class="showcase-card__body">
+            <span class="showcase-card__platforms">ARCore + Filament Showcase</span>
+            <h3 class="h3">Living AR Dragon Showcase</h3>
+            <p>Real 1:1 ARCore + Filament anchor in a living room — exact perspective, matching room shadows, and brought to life in-scene.</p>
+            <div class="showcase-card__links">
+              <a class="showcase-pill showcase-pill--primary" href="https://thomasgorisse.github.io/arcamera/dragon/">Watch the AR Dragon</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="showcase-card reveal" style="--i:1">
+          <div class="showcase-card__media">
+            <img src="assets/home/og-3d-tools.png" alt="3D AR Viewer: open local STL, OBJ, and GLB files or create 3D models from a photo and place at 1:1 scale in AR." width="1200" height="630" loading="lazy">
+          </div>
+          <div class="showcase-card__body">
+            <span class="showcase-card__platforms">Android · iOS</span>
+            <h3 class="h3">3D AR Viewer: AI Model Maker</h3>
+            <p>Open <code>.glb</code>, <code>.stl</code>, and <code>.obj</code> files or create a 3D model from a single photo and place it at real scale in AR.</p>
+            <div class="showcase-card__links">
+              <a class="showcase-pill showcase-pill--primary" href="https://thomasgorisse.github.io/arcamera/">Open 3D Tools</a>
+              <a class="showcase-pill" href="https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&amp;referrer=utm_source%3Dsceneview%26utm_medium%3Dwebsite%26utm_campaign%3Dbuilt_with">Google Play</a>
+              <a class="showcase-pill" href="https://apps.apple.com/app/id6790808866">App Store</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="showcase-card reveal" style="--i:2">
+          <div class="showcase-card__media">
+            <img src="assets/home/og-willitfit.png" alt="Will It Fit: real Filament 3D doorway capture checking wardrobe and furniture clearance." width="1200" height="630" loading="lazy">
+          </div>
+          <div class="showcase-card__body">
+            <span class="showcase-card__platforms">Android</span>
+            <h3 class="h3">Will It Fit: Real-3D Clearance &amp; AR</h3>
+            <p>Real Pixel 4a Filament 3D doorway capture — check whether sofas, wardrobes, TVs, and cars clear turns, lifts, and boots.</p>
+            <div class="showcase-card__links">
+              <a class="showcase-pill showcase-pill--primary" href="https://thomasgorisse.github.io/willitfit/">Check Fit</a>
+              <a class="showcase-pill" href="https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&amp;referrer=utm_source%3Dsceneview%26utm_medium%3Dwebsite%26utm_campaign%3Dbuilt_with">Google Play</a>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- 2b · 3D SCAN — two real scans from the demo app (Pixel 9), rendered in real time by SceneView's
        web renderer as one slow orbit, never sped up. Each card has a light and a dark render; only the
        one matching the theme shows and plays. Videos play only in view, never under reduced motion or
@@ -427,22 +496,6 @@
         <a class="link" href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Google Play</a>
         <a class="link" href="https://apps.apple.com/us/app/sceneview/id6761329763">App Store</a>
         <a class="link" href="/web-demo/">Web demo</a></p>
-      <div class="bento" style="margin-top: var(--s-5);" aria-label="Apps built with SceneView">
-        <article class="card tile reveal">
-          <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&amp;referrer=utm_source%3Dsceneview%26utm_medium%3Dwebsite%26utm_campaign%3Dbuilt_with">3D AR Viewer</a></h3>
-            <p>Open <code>.glb</code>, <code>.stl</code> and <code>.obj</code> files or turn a photo into a 3D model and place it at real scale in AR. Built with SceneView.</p>
-            <span class="tile__go">Get it on Google Play</span>
-          </div>
-        </article>
-        <article class="card tile reveal" style="--i:1">
-          <div class="tile__body">
-            <h3 class="h3"><a class="tile__link" href="https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&amp;referrer=utm_source%3Dsceneview%26utm_medium%3Dwebsite%26utm_campaign%3Dbuilt_with">Will It Fit</a></h3>
-            <p>Check whether a sofa, desk or appliance clears a door, hallway turn, lift or car boot — with an AR tape measure. Built with SceneView.</p>
-            <span class="tile__go">Get it on Google Play</span>
-          </div>
-        </article>
-      </div>
     </div>
   </section>
 
@@ -486,6 +539,7 @@
         <li><b>Android XR</b><small>Jetpack XR SceneCore</small><span class="status status--planned">Planned</span></li>
       </ul>
       <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android and desktop, a viewer subset without AR. The retained iOS host depends on end-of-life SceneViewSwift 4.68.0. <a href="/docs/platforms/">Feature matrix per platform</a></p>
+      <!-- Retained Apple SwiftPM last release pin for sync-versions.sh: // Version: 4.68.0 -->
     </div>
   </section>
 
@@ -508,14 +562,14 @@
           <div class="select">
             <select id="mcp-pick" data-assistants="mcp-out">
               <option value="any" selected>Any MCP client</option>
-              <option value="claude">Claude Code</option>
+              <option value="antigravity">Google Antigravity</option>
+              <option value="gemini">Gemini CLI &amp; Code Assist</option>
+              <option value="cursor">Cursor</option>
               <option value="copilot">GitHub Copilot</option>
               <option value="codex">OpenAI Codex</option>
-              <option value="cursor">Cursor</option>
-              <option value="gemini">Gemini Code Assist</option>
+              <option value="claude">Claude Code</option>
               <option value="jetbrains">JetBrains AI</option>
               <option value="opencode">OpenCode</option>
-              <option value="antigravity">Google Antigravity</option>
             </select>
             <svg class="select__icon" aria-hidden="true"><use href="#i-chevron"/></svg>
           </div>
