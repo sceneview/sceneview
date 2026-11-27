@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARCameraPermissionState
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.AutoPlacementResult
@@ -176,5 +177,21 @@ private fun hostLifecycleAndPlacementFreeContent(
         materialLoader = materials,
         lifecycle = io.github.sceneview.ar.rememberHostLifecycle(),
         sceneContent = { },
+    ) { _ -> }
+}
+
+@Composable
+private fun translucentTextureSurface(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+) {
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        surfaceType = SurfaceType.TextureSurface,
+        isOpaque = false,
     ) { _ -> }
 }

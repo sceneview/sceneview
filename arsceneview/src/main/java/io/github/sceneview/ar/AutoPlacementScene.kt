@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.haptic.ARHapticEvent
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -401,6 +402,9 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   [AutoPlacementState.phase] or ARCore availability; use it when positioning host chrome.
  * @param cameraStream the camera feed, as [ARSceneView]'s parameter of the same name — pass your
  *   own to read or occlude with it.
+ * @param surfaceType the backing surface, as [ARSceneView]'s parameter of the same name.
+ * @param isOpaque whether the backing surface is opaque. Use `false` with
+ *   [SurfaceType.TextureSurface] to compose a camera substitute behind the viewport.
  * @param sessionConfiguration runs after this scene has set plane finding, depth and instant
  *   placement for [surface], as [ARSceneView]'s does: enable cloud anchors, depth, light
  *   estimation or semantics here. Turning plane finding off stops placement.
@@ -437,6 +441,8 @@ fun AutoPlacementScene(
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)? = null,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    isOpaque: Boolean = true,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     onSessionCreated: ((session: Session) -> Unit)? = null,
     onSessionResumed: ((session: Session) -> Unit)? = null,
@@ -490,12 +496,14 @@ fun AutoPlacementScene(
         ) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+                surfaceType = surfaceType,
                 lifecycle = lifecycle,
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = playbackDataset,
                 cameraStream = cameraStream,
+                isOpaque = isOpaque,
                 sessionConfiguration = sessionConfiguration,
                 // The surfaces show while the object looks for one and while it moves (#5209).
                 planeRenderer = state.showsPlaneGuide && state.guide.planes,
@@ -1541,14 +1549,22 @@ private fun visiblePlacementPoint(
 }
 
 /**
- * Whether an object at [objectY] stands on the floor rather than on a table: only a floor drag
- * may leave every polygon. It must sit on the lowest tracked upward-facing plane ([floorY]),
- * and the camera ([cameraY]) must be at least [FLOOR_BELOW_CAMERA_M] above it, because the
- * lowest plane is a table when ARCore has not seen the floor yet. In doubt, it is a table.
+ * Height heuristic for a host that has explicitly enabled off-polygon floor dragging. The
+ * object must sit on the lowest tracked upward-facing plane ([floorY]), and the camera
+ * ([cameraY]) must be at least [FLOOR_BELOW_CAMERA_M] above it. Height alone cannot prove that
+ * the plane is a floor, so [AutoPlacementState.allowsOffPolygonFloorDrag] remains the policy gate.
  */
 internal fun standsOnFloor(objectY: Float, floorY: Float?, cameraY: Float?): Boolean =
     floorY != null && cameraY != null && objectY - floorY <= SEAM_FLOOR_TOLERANCE_M &&
         cameraY - objectY >= FLOOR_BELOW_CAMERA_M
+
+/** Ambiguous floor inference stays polygon-bound unless the host explicitly accepts it. */
+internal fun canDragOffPolygon(
+    allowed: Boolean,
+    objectY: Float,
+    floorY: Float?,
+    cameraY: Float?,
+): Boolean = allowed && standsOnFloor(objectY, floorY, cameraY)
 
 /**
  * A phone held by someone standing is 1.1–1.4 m above the floor and 0.4–0.9 m above a
@@ -1608,7 +1624,9 @@ private class AutomaticAnchorNode(
         val tangent = pose.rotateVector(floatArrayOf(x, 0f, if (placement.isWall) -y else y))
         val target = translated(pose, tangent)
         // Same floor policy as a drag: on the floor it may leave the polygon and reach 5 m.
-        val onFloor = !placement.isWall && standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight)
+        val onFloor = !placement.isWall && canDragOffPolygon(
+            state.allowsOffPolygonFloorDrag, target.ty(), state.floorHeight, state.cameraHeight,
+        )
         val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind, onFloor)
         if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target, dragDistanceLimit(target))) {
             invalidMove(true)
@@ -1658,7 +1676,11 @@ private class AutomaticAnchorNode(
                 // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
                 // ends at its edge: an object never floats past it.
                 ?: slideAlongWall(e, offPolygonFloor = true)
-                    ?.takeIf { standsOnFloor(pose.ty(), state.floorHeight, state.cameraHeight) }
+                    ?.takeIf {
+                        canDragOffPolygon(
+                            state.allowsOffPolygonFloorDrag, pose.ty(), state.floorHeight, state.cameraHeight,
+                        )
+                    }
         }
         if (candidate == null || !candidate.accepts(candidate.pose) ||
             !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
@@ -1779,7 +1801,10 @@ private class AutomaticAnchorNode(
 
     /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall or a table keeps the placement range. */
     private fun dragDistanceLimit(target: Pose) =
-        if (placement.isWall || !standsOnFloor(target.ty(), state.floorHeight, state.cameraHeight)) {
+        if (placement.isWall || !canDragOffPolygon(
+                state.allowsOffPolygonFloorDrag, target.ty(), state.floorHeight, state.cameraHeight,
+            )
+        ) {
             UsableSurfacePolicy.MAX_DISTANCE_M
         } else MAX_DRAG_DISTANCE_M
 

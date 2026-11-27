@@ -100,6 +100,8 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.rememberMotionSensorSilent
 import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -121,8 +123,8 @@ import java.io.File
  * It is the SDK's [AutoPlacementScene] — the one component every app gets — with this app's
  * chrome around it: the coaching stack and its cards ([TapToPlaceStatusOverlays]), the AR
  * funnel analytics and the QA hooks. Placement, the surface search, the anchor and every
- * gesture (drag anywhere on screen and off the floor's polygon, twist, pinch, double tap) are
- * the SDK's; [TapToPlaceState] mirrors its phase for the overlays.
+ * gesture (surface-constrained drag anywhere on screen, twist, pinch, double tap) are the SDK's;
+ * [TapToPlaceState] mirrors its phase for the overlays.
  *
  * Hosts: the AR View tab (consumer entry) and the `ar-placement` feature demo.
  *
@@ -210,9 +212,13 @@ fun TapToPlaceArSession(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // The synthetic feed belongs behind the translucent viewport. Keeping it here also leaves
+        // AutoPlacementScene's camera-permission and ARCore-availability cards above it.
+        if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
+
         // The SDK's one placement component, as every app gets it (#5262): placed on the first
-        // usable surface, dragged anywhere on screen and off the floor's polygon, twisted,
-        // pinched, double-tapped back to 100 %. The demo adds only its chrome around it.
+        // usable surface, dragged anywhere on screen, twisted, pinched, double-tapped back to
+        // 100 %. The demo adds only its chrome around it.
         AutoPlacementScene(
             assetReady = state.spec != null && state.modelInstance != null,
             modifier = Modifier.fillMaxSize(),
@@ -227,7 +233,10 @@ fun TapToPlaceArSession(
             coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             playbackDataset = playbackDataset,
             cameraStream = if (qaBackdrop) null else cameraStream,
+            surfaceType = qaCameraBackdropSurfaceType(),
+            isOpaque = !qaCameraBackdropEnabled(),
             sessionConfiguration = sessionConfiguration,
+            sceneContent = extraSceneContent,
             onSessionCreated = { funnel.sessionCreated() },
             onSessionResumed = { funnel.sessionResumed() },
             onSessionPaused = { funnel.sessionPaused() },
@@ -269,11 +278,7 @@ fun TapToPlaceArSession(
                     },
                 )
             }
-            extraSceneContent?.invoke(this)
         }
-
-        // On the emulator, which has no camera, a still room stands in for the feed (#3308).
-        if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
 
         // Cover the still-black AR viewport until the first camera frame (#2484) — unless
         // ARCore has already ruled the session out (#3341), in which case that frame is never
@@ -330,7 +335,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     // a reset tap re-fires it with `isRealWorldSize = true`) and never fires while a pinch
     // is actually live, so it can never race the gesture that is still updating the number.
     LaunchedEffect(state.scalePercent, state.activeGesture, state.isRealWorldSize) {
-        if (state.scalePercent == null || state.activeGesture == PlacementGesture.SCALING) {
+        if (state.scalePercent == null || state.activeGesture != null) {
             return@LaunchedEffect
         }
         delay(if (state.isRealWorldSize) PLACEMENT_SCALE_CONFIRM_MS else PLACEMENT_SCALE_RESET_WINDOW_MS)

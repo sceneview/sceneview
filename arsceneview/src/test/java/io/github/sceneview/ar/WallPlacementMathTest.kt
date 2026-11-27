@@ -79,6 +79,16 @@ class WallPlacementMathTest {
     }
 
     @Test
+    fun `an ambiguous low table stays polygon-bound unless the host opts in`() {
+        // Height alone cannot distinguish a 40 cm coffee table from the floor under a phone at
+        // 1.50 m. The safe default therefore keeps that ambiguous support polygon-bound.
+        assertTrue(standsOnFloor(objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+        assertFalse(AutoPlacementState().allowsOffPolygonFloorDrag)
+        assertFalse(canDragOffPolygon(false, objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+        assertTrue(canDragOffPolygon(true, objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+    }
+
+    @Test
     fun `wall contact survives combined twist scale and transfer to another wall`() {
         for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
             normalize(Direction(1f, 0.1f, -1f)))) {
