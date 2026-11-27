@@ -70,8 +70,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
-import com.google.ar.core.Anchor
-import com.google.ar.core.Frame
 import io.github.sceneview.SceneView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
@@ -340,6 +338,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.createAnchorOrNull

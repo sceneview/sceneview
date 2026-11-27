@@ -47,7 +47,7 @@ describe("generateSetupProject — ios", () => {
     it("references the final SceneViewSwift 4.x release", () => {
         const pkg = result.files.find((f) => f.path.endsWith("Package.swift"));
         expect(pkg.contents).toContain('exact: "4.68.0"');
-        expect(pkg.contents).toContain("SceneViewSwift");
+        expect(pkg.contents).toContain('.product(name: "SceneViewSwift", package: "sceneview")');
     });
     it("uses RerunBridge and ARSceneView in the SwiftUI view", () => {
         const swift = result.files.find((f) => f.path.endsWith("ARWithRerunView.swift"));

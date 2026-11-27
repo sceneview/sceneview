@@ -241,6 +241,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 
 /**
  * AR Level Editor — ${options.theme} theme.

@@ -26,11 +26,35 @@ const forbidden4xPatterns = [
   /\bchildNodes\s*=/,
 ];
 
+const requiredTypeImports = [
+  ["Anchor", "com.google.ar.core.Anchor"],
+  ["Frame", "com.google.ar.core.Frame"],
+  ["Size", "io.github.sceneview.math.Size"],
+] as const;
+
+function expectUsedTypesImported(code: string) {
+  const body = code
+    .replace(/^import .*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "")
+    .replace(/"(?:\\.|[^"\\])*"/g, "");
+
+  for (const [symbol, importPath] of requiredTypeImports) {
+    expect(sceneViewReference, `${symbol} is missing from llms.txt`).toMatch(
+      new RegExp(`\\b${symbol}\\b`),
+    );
+    if (new RegExp(`\\b${symbol}\\b`).test(body)) {
+      expect(code, `${symbol} is used without its import`).toContain(`import ${importPath}`);
+    }
+  }
+}
+
 describe("generated SceneView templates", () => {
   it.each(templates)("uses documented 4.x APIs in every %s template", (_, generate) => {
     for (const ar of [false, true]) {
       const code = generate(ar);
       for (const forbidden of forbidden4xPatterns) expect(code).not.toMatch(forbidden);
+      expectUsedTypesImported(code);
 
       const composables = new Set(
         [...code.matchAll(/\b([A-Z][A-Za-z0-9]*(?:Node|SceneView))\s*\(/g)]

@@ -111,6 +111,7 @@ describe("generateLevelEditor", () => {
   it("generates AR code when ar=true", () => {
     const code = generateLevelEditor({ theme: "dungeon", ar: true });
     expect(code).toContain("ARSceneView(");
+    expect(code).toContain("import io.github.sceneview.math.Size");
     expect(code).toContain("android.permission.CAMERA");
     expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
   });

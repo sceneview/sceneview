@@ -140,7 +140,7 @@ dependencies: [
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "SceneViewSwift", package: "SceneViewSwift"),
+        .product(name: "SceneViewSwift", package: "sceneview"),
     ]
 )
 `,
