@@ -29,7 +29,7 @@ function release(root) {
   textures.forEach(texture => { texture.source?.data?.close?.(); texture.dispose(); });
 }
 
-async function modelViewer(canvas, url, options = {}) {
+function create(canvas, options = {}) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0, 0);
@@ -78,6 +78,12 @@ async function modelViewer(canvas, url, options = {}) {
   }
   function frameModel({ fill = 0.8 } = {}) {
     if (!model) return;
+    const extent = Math.max(size.x, size.y, size.z);
+    camera.near = Math.max(extent / 1000, 0.0001);
+    camera.far = extent * 100;
+    camera.updateProjectionMatrix();
+    controls.minDistance = extent * 0.25;
+    controls.maxDistance = extent * 10;
     const halfFov = camera.fov * Math.PI / 360;
     const sweep = Math.hypot(size.x, size.z) / 2;
     const tangent = fill * Math.tan(halfFov);
@@ -120,12 +126,6 @@ async function modelViewer(canvas, url, options = {}) {
       scene.add(model);
       controls.target.set(0, size.y / 2, 0);
       frameModel();
-      camera.near = Math.max(extent / 1000, 0.0001);
-      camera.far = extent * 100;
-      camera.updateProjectionMatrix();
-      controls.minDistance = extent * 0.25;
-      controls.maxDistance = extent * 10;
-      controls.update();
       shadow.scale.set(Math.max(size.x, extent * 0.25) * 1.7, Math.max(size.z, extent * 0.25) * 1.7, 1);
       shadow.position.y = -extent * 0.002;
       mixer = new AnimationMixer(model);
@@ -150,8 +150,13 @@ async function modelViewer(canvas, url, options = {}) {
       renderer.forceContextLoss();
     },
   };
+  return viewer;
+}
+
+async function modelViewer(canvas, url, options = {}) {
+  const viewer = create(canvas, options);
   try { await viewer.loadModel(url); return viewer; }
   catch (error) { viewer.dispose(); throw error; }
 }
 
-window.SceneViewFallback = { modelViewer };
+window.SceneViewFallback = { create, modelViewer };

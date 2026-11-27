@@ -9,6 +9,10 @@ const WIDGET_FALLBACK_JS = readFileSync(
   new URL("../../website-static/js/widget-fallback.js", import.meta.url),
   "utf8"
 );
+const WIDGET_FALLBACK_SOURCE = readFileSync(
+  new URL("../browser/widget-fallback.js", import.meta.url),
+  "utf8"
+);
 const fallbackUrl = `https://sceneview.github.io/js/widget-fallback.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 
 import {
@@ -51,8 +55,10 @@ function harness(
   options: {
     wasm?: boolean;
     primaryError?: boolean;
+    primaryLoadError?: boolean;
     fallbackError?: boolean;
     fallbackDownloadError?: boolean;
+    fallbackDownloadFailures?: number;
     space?: boolean;
     wide?: boolean;
     reducedMotion?: boolean;
@@ -62,6 +68,7 @@ function harness(
     height?: number;
     openai?: Record<string, unknown>;
     query?: string;
+    fetch?: (input: string, init?: { signal?: AbortSignal }) => Promise<unknown>;
   } = {}
 ) {
   const paths: { points: number[][]; fill?: string; stroke?: string }[] = [];
@@ -136,7 +143,9 @@ function harness(
   const messages: any[] = [];
   const scripts: string[] = [];
   const primary = {
-    loadModel: vi.fn(async () => {}),
+    loadModel: vi.fn(async () => {
+      if (options.primaryLoadError) throw new Error("HTTP 404 loading the model");
+    }),
     dispose: vi.fn(),
     setAutoRotate: vi.fn(),
     frameModel: vi.fn<(options: { fill: number }) => void>(),
@@ -171,7 +180,7 @@ function harness(
     getModelSize: () => options.size || [0.8, 1.8, 0.5],
   };
   const primaryFactory = vi.fn(
-    async (_canvas?: unknown, _url?: string, _options?: { studio: { pool: string } }) => {
+    async (_canvas?: unknown, _options?: { studio: { pool: string } }) => {
       if (options.primaryError) {
         // Initialization has no viewer to dispose; model-load failures can leave
         // another overlay with the same renderer-owned class.
@@ -205,6 +214,9 @@ function harness(
       return media;
     },
   };
+  let fallbackDownloadFailures =
+    options.fallbackDownloadFailures ??
+    (options.fallbackDownloadError ? Number.POSITIVE_INFINITY : 0);
   const document: any = {
     getElementById: element,
     documentElement: element("html"),
@@ -212,14 +224,14 @@ function harness(
     head: {
       appendChild: (script: any) => {
         scripts.push(script.src);
-        if (script.src?.includes("sceneview.js"))
-          window.SceneView = { modelViewer: primaryFactory };
+        if (script.src?.includes("sceneview.js")) window.SceneView = { create: primaryFactory };
         if (script.src === fallbackUrl) {
-          if (options.fallbackDownloadError) {
+          if (fallbackDownloadFailures > 0) {
+            fallbackDownloadFailures--;
             queueMicrotask(() => script.onerror?.());
             return;
           }
-          window.SceneViewFallback = { modelViewer: fallbackFactory };
+          window.SceneViewFallback = { create: fallbackFactory };
         }
         if (script.src?.includes("qrcode-vendor"))
           window.qrcode = () => ({
@@ -240,6 +252,12 @@ function harness(
   const wasm = vi.fn(async () => {
     if (options.wasm === false) throw new WebAssembly.CompileError("WASM blocked by CSP");
   });
+  const fetchModel = vi.fn(
+    options.fetch ||
+      (async () => {
+        throw new Error("Unexpected model fetch");
+      })
+  );
   runInNewContext(scriptOf(options.space ? WIDGET_SHOW_IN_SPACE_HTML : WIDGET_3D_VIEWER_HTML), {
     window,
     document,
@@ -254,6 +272,8 @@ function harness(
     URL,
     URLSearchParams,
     Uint8Array,
+    AbortController,
+    fetch: fetchModel,
     WebAssembly: { compile: wasm },
     console: { info: vi.fn(), warn: vi.fn() },
     setTimeout: timer,
@@ -279,6 +299,7 @@ function harness(
     fallback,
     primaryFactory,
     fallbackFactory,
+    fetchModel,
     wasm,
     send,
     setWide: (wide: boolean) => {
@@ -363,6 +384,21 @@ describe("widget renderer selection", () => {
       h.close();
     }
   });
+  it("disposes the retained Filament instance when its initial model load fails", async () => {
+    const h = harness({ primaryLoadError: true });
+    try {
+      h.deliver();
+      await flush();
+      await flush();
+      expect(h.primaryFactory).toHaveBeenCalledOnce();
+      expect(h.primary.loadModel).toHaveBeenCalledOnce();
+      expect(h.primary.dispose).toHaveBeenCalledOnce();
+      expect(h.fallbackFactory).toHaveBeenCalledOnce();
+      expect(h.elements.get("html").dataset.renderer).toBe("fallback");
+    } finally {
+      h.close();
+    }
+  });
   it("removes Filament initialization and load overlays before the fallback renders", async () => {
     const h = harness({ primaryError: true });
     try {
@@ -406,18 +442,16 @@ describe("widget renderer selection", () => {
         h.deliver();
         await flush();
         h.fallback.loadModel.mockRejectedValueOnce(new Error(failure as string));
+      } else if (failure === "initial creation") {
+        h.fallbackFactory.mockRejectedValueOnce(new Error(failure));
       } else {
-        // The real factory disposes its viewer before rejecting an initial load.
-        h.fallbackFactory.mockImplementationOnce(async () => {
-          h.fallback.dispose();
-          throw new Error(failure as string);
-        });
+        h.fallback.loadModel.mockRejectedValueOnce(new Error(failure as string));
       }
       const failedCanvas = h.elements.get("canvas");
       h.deliver({ ...model, modelUrl: "https://example.com/bad.glb" });
       await flush();
       expect(h.elements.get("error").hidden).toBe(false);
-      expect(h.fallback.dispose).toHaveBeenCalledOnce();
+      expect(h.fallback.dispose).toHaveBeenCalledTimes(failure === "initial creation" ? 0 : 1);
       expect(h.elements.get("canvas")).not.toBe(failedCanvas);
       h.deliver();
       await flush();
@@ -446,8 +480,52 @@ describe("widget renderer selection", () => {
       h.deliver({ ...model, modelUrl: "https://sceneview.github.io/new.glb", title: "New model" });
       await flush();
       expect(h.primaryFactory).toHaveBeenCalledOnce();
-      expect(h.primaryFactory.mock.calls[0]).toContain("https://sceneview.github.io/new.glb");
+      expect(h.primary.loadModel).toHaveBeenCalledWith("https://sceneview.github.io/new.glb");
       expect(h.elements.get("title").textContent).toBe("New model");
+    } finally {
+      h.close();
+    }
+  });
+  it("aborts a stale 3MF download and starts the latest GLB independently", async () => {
+    let staleSignal: AbortSignal | undefined;
+    const h = harness({
+      fetch: async (_input, init) => {
+        staleSignal = init?.signal;
+        return await new Promise(() => {});
+      },
+    });
+    try {
+      h.deliver({ ...model, modelUrl: "https://example.com/stuck.3mf" });
+      await flush();
+      expect(h.fetchModel).toHaveBeenCalledOnce();
+
+      h.deliver({ ...model, modelUrl: "https://example.com/latest.glb", title: "Latest" });
+      await flush();
+
+      expect(staleSignal?.aborted).toBe(true);
+      expect(h.primary.loadModel).toHaveBeenCalledOnce();
+      expect(h.primary.loadModel).toHaveBeenCalledWith("https://example.com/latest.glb");
+      expect(h.elements.get("title").textContent).toBe("Latest");
+      expect(h.elements.get("html").dataset.renderer).toBe("filament");
+    } finally {
+      h.close();
+    }
+  });
+  it("retries renderer downloads after a transient fallback network failure", async () => {
+    const h = harness({ wasm: false, fallbackDownloadFailures: 1 });
+    try {
+      h.deliver();
+      await flush();
+      expect(h.elements.get("error").hidden).toBe(false);
+      expect(h.scripts.filter((url) => url === fallbackUrl)).toHaveLength(1);
+
+      h.deliver({ ...model, title: "Retry" });
+      await flush();
+
+      expect(h.scripts.filter((url) => url === fallbackUrl)).toHaveLength(2);
+      expect(h.fallbackFactory).toHaveBeenCalledOnce();
+      expect(h.elements.get("error").hidden).toBe(true);
+      expect(h.elements.get("html").dataset.renderer).toBe("fallback");
     } finally {
       h.close();
     }
@@ -456,7 +534,7 @@ describe("widget renderer selection", () => {
 
 describe("fallback resource packaging", () => {
   it("boots the real bundled dependency without dynamic code generation", () => {
-    const window: { SceneViewFallback?: { modelViewer: unknown } } = {};
+    const window: { SceneViewFallback?: { create: unknown; modelViewer: unknown } } = {};
     runInNewContext(
       WIDGET_FALLBACK_JS,
       { window, console },
@@ -464,7 +542,46 @@ describe("fallback resource packaging", () => {
         contextCodeGeneration: { strings: false, wasm: false },
       }
     );
+    expect(window.SceneViewFallback?.create).toBeTypeOf("function");
     expect(window.SceneViewFallback?.modelViewer).toBeTypeOf("function");
+  });
+  it("updates fallback camera limits before framing a replacement model", () => {
+    const start = WIDGET_FALLBACK_SOURCE.indexOf("function frameModel");
+    const end = WIDGET_FALLBACK_SOURCE.indexOf("\n  const observer", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+
+    const updates: Array<{ near: number; far: number; min: number; max: number }> = [];
+    const camera = {
+      fov: 35,
+      aspect: 1,
+      near: 0.0001,
+      far: 10,
+      position: { set: vi.fn() },
+      updateProjectionMatrix: vi.fn(),
+    };
+    const controls = {
+      minDistance: 0.025,
+      maxDistance: 1,
+      update: () =>
+        updates.push({
+          near: camera.near,
+          far: camera.far,
+          min: controls.minDistance,
+          max: controls.maxDistance,
+        }),
+    };
+    const frameModel = runInNewContext(`(${WIDGET_FALLBACK_SOURCE.slice(start, end)})`, {
+      camera,
+      controls,
+      model: {},
+      size: { x: 10, y: 10, z: 10 },
+    }) as (options?: { fill?: number }) => void;
+
+    frameModel();
+
+    expect(updates).toEqual([{ near: 0.01, far: 1000, min: 2.5, max: 100 }]);
+    expect(camera.position.set).toHaveBeenCalledOnce();
   });
   it("keeps resource HTML small and loads a licensed fallback from the allowed website", () => {
     expect(Buffer.byteLength(WIDGET_3D_VIEWER_HTML)).toBeLessThan(60_000);
@@ -516,7 +633,7 @@ describe("model presentation", () => {
       expect(fill).toBeLessThan(0.83);
       expect(h.elements.get("real-size").textContent).toBe("≈ 2 m tall");
       expect(orbit.angle).toBe(0.785);
-      expect(h.primaryFactory.mock.calls[0][2]?.studio.pool).toBe("#232d40");
+      expect(h.primaryFactory.mock.calls[0][1]?.studio.pool).toBe("#232d40");
     } finally {
       h.close();
     }

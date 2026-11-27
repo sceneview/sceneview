@@ -97,13 +97,14 @@ describe("3D viewer widget HTML", () => {
     expect(html).toContain('"ui/notifications/initialized"');
   });
 
-  it("renders with SceneView.modelViewer and an absolute IBL", () => {
+  it("retains the viewer before loading a resolved URL and uses an absolute IBL", () => {
     // `url`, not `data.modelUrl`: a 3MF is converted to a blob GLB first (#3482),
     // and the renderer must be handed the resolved URL, never the raw one.
     expect(WIDGET_3D_VIEWER_HTML).toContain(
-      'rendererKind === "filament" ? window.SceneView : window.SceneViewFallback'
+      'kind === "filament" ? window.SceneView : window.SceneViewFallback'
     );
-    expect(WIDGET_3D_VIEWER_HTML).toContain("factory.modelViewer(canvas, url");
+    expect(WIDGET_3D_VIEWER_HTML).toContain("factory.create(targetCanvas");
+    expect(WIDGET_3D_VIEWER_HTML).toContain("instance.loadModel(url)");
     expect(WIDGET_3D_VIEWER_HTML).toContain(
       'IBL_URL = "https://sceneview.github.io/environments/neutral_ibl.ktx"'
     );

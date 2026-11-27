@@ -523,7 +523,8 @@ function buildWidgetHtml(space: boolean): string {
       var rendered = null;
       var pending = null;
       var viewer = null;
-      var renderQueue = Promise.resolve();
+      var viewerCreation = null;
+      var loadController = null;
       var rendererPromise = null;
       var rendererKind = null;
       var disposed = false;
@@ -810,6 +811,9 @@ function buildWidgetHtml(space: boolean): string {
 
       function render(data) {
         if (disposed || (!pending && (viewer || SPACE_WIDGET) && rendered && JSON.stringify(rendered) === JSON.stringify(data))) return;
+        if (loadController) loadController.abort();
+        var controller = new AbortController();
+        loadController = controller;
         pending = data;
         canvas.style.opacity = "0";
         sizeEl.hidden = true;
@@ -828,19 +832,27 @@ function buildWidgetHtml(space: boolean): string {
             document.documentElement.dataset.renderer = "canvas2d";
             notifyReady();
           } catch (err) { fail(err); }
+          if (loadController === controller) loadController = null;
           return;
         }
         canvas.setAttribute("aria-label", data.alt || data.title || "3D model");
         var ext = (data.modelUrl.split("?")[0].split(".").pop() || "GLB").toUpperCase();
         formatEl.textContent = ext === "GLTF" ? "glTF" : ext;
-        // Serialize loads, so a superseded result cannot repaint a newer model or error.
-        renderQueue = renderQueue.catch(function () {}).then(async function () {
+        // A new result aborts this operation and starts independently. Renderer
+        // loadModel() calls also use newest-wins tickets, so an old download can
+        // never repaint a newer model when it eventually settles.
+        (async function () {
           if (pending !== data || disposed) return;
           try {
             await chooseRenderer();
-            if (pending === data && !disposed) await start(data);
-          } catch (err) { if (pending === data && !disposed) fail(err); }
-        });
+            if (pending === data && !disposed) await start(data, controller);
+          } catch (err) {
+            if (err && err.name === "AbortError") return;
+            if (pending === data && !disposed) fail(err);
+          } finally {
+            if (loadController === controller) loadController = null;
+          }
+        })();
       }
 
       ${space ? SPACE_DRAWING_JS : ""}
@@ -856,12 +868,9 @@ function buildWidgetHtml(space: boolean): string {
       var threeMfScriptPromise = null;
       function loadThreeMfConverter() {
         if (!threeMfScriptPromise) {
-          threeMfScriptPromise = new Promise(function (resolve, reject) {
-            var el = document.createElement("script");
-            el.src = CONVERTER_URL;
-            el.onload = function () { resolve(); };
-            el.onerror = function () { reject(new Error("could not load the 3MF converter")); };
-            document.head.appendChild(el);
+          threeMfScriptPromise = loadScript(CONVERTER_URL).catch(function (error) {
+            threeMfScriptPromise = null;
+            throw error;
           });
         }
         return threeMfScriptPromise;
@@ -884,13 +893,13 @@ function buildWidgetHtml(space: boolean): string {
        * still costs exactly one download, and a glTF keeps resolving its own
        * external buffers and textures against its own URL.
        */
-      function resolveModelUrl(url) {
+      function resolveModelUrl(url, controller) {
         var path = String(url).split("?")[0].split("#")[0].toLowerCase();
         var isThreeMfUrl = /.3mf$/.test(path);
         var isKnownGltf = /.(glb|gltf)$/.test(path);
         if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);
 
-        return fetch(url)
+        var download = fetch(url, { signal: controller.signal })
           .then(function (r) {
             if (!r.ok) throw new Error("HTTP " + r.status + " loading the model");
             var type = (r.headers.get("content-type") || "").toLowerCase();
@@ -900,7 +909,7 @@ function buildWidgetHtml(space: boolean): string {
           })
           .then(function (payload) {
             if (!looksLikeZip(payload.buffer) && !payload.isThreeMfType) return url;
-            return loadThreeMfConverter().then(function () {
+            return abortable(loadThreeMfConverter(), controller.signal).then(function () {
               if (!window.sceneview || typeof window.sceneview.threeMfToGlb !== "function") {
                 throw new Error("the 3MF converter did not load");
               }
@@ -913,13 +922,15 @@ function buildWidgetHtml(space: boolean): string {
               return URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
             });
           });
+        return deadline(download, 15000, "The model download timed out.", function () { controller.abort(); });
       }
 
-      async function start(data) {
-        var url = await resolveModelUrl(data.modelUrl);
+      async function start(data, controller) {
+        var signal = controller.signal;
+        var url = await resolveModelUrl(data.modelUrl, controller);
         try {
           if (pending !== data || disposed) return;
-          try { await startWith(data, url); }
+          try { await startWith(data, url, signal); }
           catch (err) {
             if (err && err.name === "AbortError") return;
             if (pending !== data || disposed) return;
@@ -929,29 +940,53 @@ function buildWidgetHtml(space: boolean): string {
             console.warn("SceneView: Filament failed; trying the WASM-free renderer.", err);
             await useFallback();
             resetCanvas();
-            await startWith(data, url);
+            await startWith(data, url, signal);
           }
         } finally {
           if (url !== data.modelUrl && url.indexOf("blob:") === 0) URL.revokeObjectURL(url);
         }
       }
 
-      function deadline(promise, ms, message) {
+      function deadline(promise, ms, message, onTimeout) {
         return new Promise(function (resolve, reject) {
-          var timer = setTimeout(function () { reject(new Error(message)); }, ms);
+          var timer = setTimeout(function () {
+            reject(new Error(message));
+            if (onTimeout) onTimeout();
+          }, ms);
           Promise.resolve(promise).then(function (value) {
             clearTimeout(timer); resolve(value);
           }, function (error) { clearTimeout(timer); reject(error); });
         });
       }
 
-      async function startWith(data, url) {
-        if (viewer) {
-          await deadline(viewer.loadModel(url), 30000, "The model took too long to load. Try the AR link.");
-        } else {
-          var factory = rendererKind === "filament" ? window.SceneView : window.SceneViewFallback;
-          var accepted = true;
-          var creation = factory.modelViewer(canvas, url, {
+      function abortError() {
+        var error = new Error("The model load was superseded.");
+        error.name = "AbortError";
+        return error;
+      }
+
+      function abortable(promise, signal) {
+        if (!signal) return Promise.resolve(promise);
+        if (signal.aborted) return Promise.reject(abortError());
+        return new Promise(function (resolve, reject) {
+          function cleanup() { signal.removeEventListener("abort", onAbort); }
+          function onAbort() { cleanup(); reject(abortError()); }
+          signal.addEventListener("abort", onAbort, { once: true });
+          Promise.resolve(promise).then(function (value) {
+            cleanup(); resolve(value);
+          }, function (error) { cleanup(); reject(error); });
+        });
+      }
+
+      function createViewer(data, signal) {
+        if (viewer) return Promise.resolve(viewer);
+        var kind = rendererKind;
+        var targetCanvas = canvas;
+        var record = viewerCreation;
+        if (!record || record.kind !== kind || record.canvas !== targetCanvas) {
+          var factory = kind === "filament" ? window.SceneView : window.SceneViewFallback;
+          record = { kind: kind, canvas: targetCanvas, promise: null };
+          record.promise = Promise.resolve(factory.create(targetCanvas, {
             backgroundColor: [0, 0, 0, 0],
             lightIntensity: 150000,
             autoRotate: data.autoRotate !== false && !reducedMotion && !interacted,
@@ -961,14 +996,32 @@ function buildWidgetHtml(space: boolean): string {
             },
             fov: 35,
             iblUrl: IBL_URL,
-          }).then(function (value) {
-            if (!accepted || disposed) { value.dispose(); return null; }
+          })).then(function (value) {
+            if (disposed || viewerCreation !== record || canvas !== targetCanvas || rendererKind !== kind) {
+              value.dispose(); return null;
+            }
+            viewer = value;
             return value;
+          }, function (error) {
+            if (viewerCreation === record) viewerCreation = null;
+            throw error;
           });
-          try {
-            viewer = await deadline(creation, 30000, "The renderer took too long to start. Try the AR link.");
-          } catch (error) { accepted = false; throw error; }
+          viewerCreation = record;
         }
+        return abortable(deadline(record.promise, 30000, "The renderer took too long to start. Try the AR link."), signal)
+          .catch(function (error) {
+            if ((!error || error.name !== "AbortError") && viewerCreation === record) viewerCreation = null;
+            throw error;
+          });
+      }
+
+      async function startWith(data, url, signal) {
+        var instance = await createViewer(data, signal);
+        if (!instance) throw abortError();
+        await abortable(
+          deadline(instance.loadModel(url), 30000, "The model took too long to load. Try the AR link."),
+          signal
+        );
         if (pending === data && !disposed) {
           framePreview();
           updateRealSize();
@@ -1045,6 +1098,7 @@ function buildWidgetHtml(space: boolean): string {
       }
 
       function resetCanvas() {
+        viewerCreation = null;
         if (viewer) { viewer.dispose(); viewer = null; }
         // Filament can insert overlays before a viewer exists, so dispose alone
         // cannot remove them. Both initialization and load failures use this class.
@@ -1067,9 +1121,12 @@ function buildWidgetHtml(space: boolean): string {
 
       var fallbackScriptPromise = null;
       async function useFallback() {
-        if (!fallbackScriptPromise) fallbackScriptPromise = loadScript(FALLBACK_URL);
+        if (!fallbackScriptPromise) fallbackScriptPromise = loadScript(FALLBACK_URL).catch(function (error) {
+          fallbackScriptPromise = null;
+          throw error;
+        });
         await fallbackScriptPromise;
-        if (!window.SceneViewFallback) throw new Error("This host could not start the 3D renderer. Use the AR link below.");
+        if (!window.SceneViewFallback || !window.SceneViewFallback.create) throw new Error("This host could not start the 3D renderer. Use the AR link below.");
         rendererKind = "fallback";
       }
 
@@ -1081,19 +1138,24 @@ function buildWidgetHtml(space: boolean): string {
             await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
             await loadScript(FILAMENT_URL);
             await loadScript(SCENEVIEW_URL);
-            if (!window.SceneView || !window.SceneView.modelViewer) throw new Error("SceneView.js did not initialize.");
+            if (!window.SceneView || !window.SceneView.create) throw new Error("SceneView.js did not initialize.");
             rendererKind = "filament";
           } catch (error) {
             console.info("SceneView: using the WASM-free renderer because Filament is unavailable.", error);
             await useFallback();
           }
-        })();
+        })().catch(function (error) {
+          rendererPromise = null;
+          throw error;
+        });
         return rendererPromise;
       }
 
       function dispose() {
         disposed = true;
         pending = null;
+        if (loadController) { loadController.abort(); loadController = null; }
+        viewerCreation = null;
         if (frameObserver) frameObserver.disconnect();
         ${space ? "if (spaceObserver) spaceObserver.disconnect();" : ""}
         if (viewer) { viewer.dispose(); viewer = null; }

@@ -221,7 +221,8 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(contents[0]?.mimeType).toBe("text/html;profile=mcp-app");
     expect(contents[0]?.text).toContain("<!DOCTYPE html>");
     expect(contents[0]?.text).toContain("window.SceneView : window.SceneViewFallback");
-    expect(contents[0]?.text).toContain("factory.modelViewer(");
+    expect(contents[0]?.text).toContain("factory.create(");
+    expect(contents[0]?.text).toContain("instance.loadModel(url)");
     expect(contents[0]?._meta?.ui?.prefersBorder).toBe(true);
     expect(contents[0]?._meta?.ui?.csp?.resourceDomains).toEqual(["https://sceneview.github.io"]);
     expect(contents[0]?._meta?.ui?.csp?.connectDomains).toContain("https://media.sketchfab.com");
