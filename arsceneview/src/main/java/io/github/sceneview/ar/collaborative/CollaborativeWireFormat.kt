@@ -26,7 +26,10 @@ package io.github.sceneview.ar.collaborative
  *                   "translation":[x,y,z], "quaternion":[x,y,z,w], "scale":[x,y,z],
  *                   "clock":<counter>}
  * {"type":"remove", "peer":"<id>", "node":"<key>", "clock":<counter>}
- * {"type":"snapshot", "peer":"<relay>", "owner":"<writer>", ...node fields...}
+ * {"type":"sync-request", "peer":"<joining-peer>", "leader":"<elected-peer>"}
+ * {"type":"snapshot-anchor", "peer":"<leader>", "to":"<joining-peer>", ...anchor fields...}
+ * {"type":"snapshot", "peer":"<leader>", "to":"<joining-peer>", "owner":"<writer>", ...node fields...}
+ * {"type":"sync-complete", "peer":"<leader>", "to":"<joining-peer>"}
  * {"type":"bye",    "peer":"<id>"}
  * ```
  *
@@ -43,9 +46,10 @@ package io.github.sceneview.ar.collaborative
  *   by the `clock` counter and then the `peer` id — see [CollaborativeState].
  * - `remove` — the removal of a placed node, ordered like `node` so a
  *   placement written earlier cannot bring the node back.
- * - `snapshot` — an internal late-join replay of a current node. The relay is
- *   connection-authenticated while `owner` preserves the original write's
- *   conflict version. Older peers ignore this unknown message type.
+ * - `sync-request`, `snapshot-anchor`, `snapshot`, and `sync-complete` form
+ *   the internal late-join handshake. Replays are addressed to one joining
+ *   peer and accepted only from its elected leader. `owner` preserves a
+ *   node's original conflict version. Older peers ignore these unknown types.
  *
  * ### Compatibility with peers that predate `clock` and `remove`
  *
@@ -76,6 +80,9 @@ public object CollaborativeWireFormat {
     public const val TYPE_REMOVE: String = "remove"
     public const val TYPE_BYE: String = "bye"
     private const val TYPE_SNAPSHOT: String = "snapshot"
+    private const val TYPE_SYNC_REQUEST: String = "sync-request"
+    private const val TYPE_SNAPSHOT_ANCHOR: String = "snapshot-anchor"
+    private const val TYPE_SYNC_COMPLETE: String = "sync-complete"
 
     // ── Encoders ──────────────────────────────────────────────────────────
 
@@ -245,8 +252,42 @@ public object CollaborativeWireFormat {
         }
     }
 
+    /** Requests an initial snapshot from the joining peer's elected leader. */
+    internal fun syncRequest(peerId: String, leaderPeerId: String): String = buildString(96) {
+        append('{')
+        appendField("type", TYPE_SYNC_REQUEST)
+        append(',')
+        appendField("peer", peerId)
+        append(',')
+        appendField("leader", leaderPeerId)
+        append("}\n")
+    }
+
+    /** Encodes the leader's current anchor without making it a new announcement. */
+    internal fun snapshotAnchor(
+        relayPeerId: String,
+        targetPeerId: String,
+        anchor: CollaborativeMessage.SharedAnchor,
+    ): String = buildString(192) {
+        append('{')
+        appendField("type", TYPE_SNAPSHOT_ANCHOR)
+        append(',')
+        appendField("peer", relayPeerId)
+        append(',')
+        appendField("to", targetPeerId)
+        append(',')
+        appendField("id", anchor.cloudAnchorId)
+        append(',')
+        appendField("name", anchor.name)
+        append("}\n")
+    }
+
     /** Encodes one current node for a bounded late-join state replay. */
-    internal fun snapshot(relayPeerId: String, nodeState: CollaborativeMessage.NodeState): String {
+    internal fun snapshot(
+        relayPeerId: String,
+        targetPeerId: String,
+        nodeState: CollaborativeMessage.NodeState,
+    ): String {
         require(nodeState.logicalClock > 0L) { "snapshot logicalClock must be positive" }
         require(nodeState.translation.size == 3) { "translation must have 3 components" }
         require(nodeState.quaternion.size == 4) { "quaternion must have 4 components" }
@@ -256,6 +297,8 @@ public object CollaborativeWireFormat {
             appendField("type", TYPE_SNAPSHOT)
             append(',')
             appendField("peer", relayPeerId)
+            append(',')
+            appendField("to", targetPeerId)
             append(',')
             appendField("owner", nodeState.peerId)
             append(',')
@@ -272,6 +315,17 @@ public object CollaborativeWireFormat {
             append(nodeState.logicalClock)
             append("}\n")
         }
+    }
+
+    /** Marks the end of the leader's addressed initial snapshot. */
+    internal fun syncComplete(relayPeerId: String, targetPeerId: String): String = buildString(80) {
+        append('{')
+        appendField("type", TYPE_SYNC_COMPLETE)
+        append(',')
+        appendField("peer", relayPeerId)
+        append(',')
+        appendField("to", targetPeerId)
+        append("}\n")
     }
 
     // ── Decoder ───────────────────────────────────────────────────────────
@@ -357,6 +411,7 @@ public object CollaborativeWireFormat {
     /** Decoded internal late-join replay, kept out of the public message API. */
     internal data class Snapshot(
         val relayPeerId: String,
+        val targetPeerId: String,
         val nodeState: CollaborativeMessage.NodeState,
     )
 
@@ -364,10 +419,52 @@ public object CollaborativeWireFormat {
         val trimmed = line.trim()
         if (stringField(trimmed, "type") != TYPE_SNAPSHOT) return null
         val relayPeer = stringField(trimmed, "peer") ?: return null
+        val targetPeer = stringField(trimmed, "to") ?: return null
         val ownerPeer = stringField(trimmed, "owner") ?: return null
         val node = parseNode(trimmed, ownerPeer) ?: return null
         if (node.logicalClock <= 0L) return null
-        return Snapshot(relayPeer, node)
+        return Snapshot(relayPeer, targetPeer, node)
+    }
+
+    internal data class SyncRequest(val peerId: String, val leaderPeerId: String)
+
+    internal fun parseSyncRequest(line: String): SyncRequest? {
+        val trimmed = line.trim()
+        if (stringField(trimmed, "type") != TYPE_SYNC_REQUEST) return null
+        return SyncRequest(
+            peerId = stringField(trimmed, "peer") ?: return null,
+            leaderPeerId = stringField(trimmed, "leader") ?: return null,
+        )
+    }
+
+    internal data class SnapshotAnchor(
+        val relayPeerId: String,
+        val targetPeerId: String,
+        val cloudAnchorId: String,
+        val name: String,
+    )
+
+    internal fun parseSnapshotAnchor(line: String): SnapshotAnchor? {
+        val trimmed = line.trim()
+        if (stringField(trimmed, "type") != TYPE_SNAPSHOT_ANCHOR) return null
+        val id = stringField(trimmed, "id") ?: return null
+        return SnapshotAnchor(
+            relayPeerId = stringField(trimmed, "peer") ?: return null,
+            targetPeerId = stringField(trimmed, "to") ?: return null,
+            cloudAnchorId = id,
+            name = stringField(trimmed, "name") ?: id,
+        )
+    }
+
+    internal data class SyncComplete(val relayPeerId: String, val targetPeerId: String)
+
+    internal fun parseSyncComplete(line: String): SyncComplete? {
+        val trimmed = line.trim()
+        if (stringField(trimmed, "type") != TYPE_SYNC_COMPLETE) return null
+        return SyncComplete(
+            relayPeerId = stringField(trimmed, "peer") ?: return null,
+            targetPeerId = stringField(trimmed, "to") ?: return null,
+        )
     }
 
     /** A `translation`/`quaternion`/`scale` triple parsed off one line. */

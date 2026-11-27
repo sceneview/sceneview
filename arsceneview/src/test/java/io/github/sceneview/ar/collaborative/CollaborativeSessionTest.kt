@@ -275,6 +275,97 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `a newcomer requests replay after its incoming handler is ready`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        alice.placeNode("existing", "chair", at(1f), identity)
+        alice.testOnlyReceive(
+            "host",
+            CollaborativeWireFormat.anchor("host", "cloud-current", "room"),
+        )
+        advanceUntilIdle()
+
+        // Membership changes while Bob has no incoming handler. Any replay
+        // triggered only by that roster event is necessarily lost.
+        val bobTransport = hub.join("bob")
+        advanceUntilIdle()
+        val bob = session(bobTransport, "Bob")
+        bob.start()
+        advanceUntilIdle()
+
+        assertEquals(listOf("existing"), bob.placedNodes.map { it.nodeKey })
+        assertEquals("cloud-current", bob.sharedCloudAnchorId)
+    }
+
+    @Test
+    fun `replay election excludes a disconnected previous leader`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val aliceTransport = hub.join("alice")
+        val alice = session(aliceTransport, "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+        alice.placeNode("existing", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        // Bob's StateFlow can conflate Alice leaving and Carol joining. Carol
+        // must still elect the live Bob and receive Bob's current snapshot.
+        aliceTransport.close()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+        advanceUntilIdle()
+
+        assertEquals(listOf("existing"), carol.placedNodes.map { it.nodeKey })
+    }
+
+    @Test
+    fun `a replayed anchor cannot overwrite a newer announcement`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        hub.join("alice")
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.anchor("alice", "new-anchor", "room"),
+        )
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.snapshotAnchor(
+                "alice",
+                "carol",
+                CollaborativeMessage.SharedAnchor("alice", "old-anchor", "room"),
+            ),
+        )
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.syncComplete("alice", "carol"),
+        )
+        advanceUntilIdle()
+
+        assertEquals("new-anchor", carol.sharedCloudAnchorId)
+    }
+
+    @Test
+    fun `a completion captured before restart cannot publish into the new runtime`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val probe = WireProbe(hub)
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        advanceUntilIdle()
+        val staleCompletion = alice.testOnlyCaptureHostedCompletion()
+
+        alice.stop()
+        alice.start()
+        staleCompletion("old-generation-anchor")
+        advanceUntilIdle()
+
+        assertNull(alice.sharedCloudAnchorId)
+        assertTrue(probe.lines.none { "\"type\":\"anchor\"" in it })
+    }
+
+    @Test
     fun `last-writer-wins across two peers for the same node key`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val carol = session(hub.join("carol"), "Carol")
@@ -910,6 +1001,36 @@ class CollaborativeSessionTest {
         assertTrue(carol.participants.none { it.id == "alice" })
         // The forged sender is not admitted either — the message is dropped whole.
         assertTrue(carol.participants.none { it.id == "mallory" })
+    }
+
+    @Test
+    fun `an established peer ignores a forged relayed snapshot`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        val carol = session(hub.join("carol"), "Carol")
+        alice.start(); bob.start(); carol.start()
+        advanceUntilIdle()
+        bob.placeNode("owned", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        val forged = CollaborativeMessage.NodeState(
+            "bob",
+            "owned",
+            "lamp",
+            at(9f),
+            identity,
+            unit,
+            9_000L,
+        )
+        carol.testOnlyReceive(
+            "alice",
+            CollaborativeWireFormat.snapshot("alice", "carol", forged),
+        )
+        advanceUntilIdle()
+
+        assertEquals("chair", carol.placedNodes.single().modelKey)
+        assertEquals(1f, carol.placedNodes.single().translation[0], 0f)
     }
 
     @Test
