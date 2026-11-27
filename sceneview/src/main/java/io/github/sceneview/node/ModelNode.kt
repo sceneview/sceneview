@@ -379,9 +379,15 @@ open class ModelNode(
             if (value.isNotEmpty()) hasOwnFrameWork = true
         }
 
+    private val animationComposition = AnimationCompositionTracker()
+
     /** Whether Filament has written a pose composed from multiple animation clips. */
-    internal var hasRetainedComposedPose = false
-        private set
+    internal val hasRetainedComposedPose: Boolean
+        get() = animationComposition.hasRetainedComposition
+
+    /** Last clip that wrote transforms retained by Filament, even after playback stops. */
+    internal val lastAppliedAnimationClip: Int?
+        get() = animationComposition.lastAppliedClip
 
     /**
      * Tracks renderable entities whose AABB was empty and had culling/shadows disabled.
@@ -808,7 +814,7 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
-                if (playingAnimations.size > 1) hasRetainedComposedPose = true
+                animationComposition.record(playingAnimations)
                 applyAnimations(
                     animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
                 )
@@ -963,6 +969,27 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
+
+/** Tracks animation transforms that Filament retains after their clips leave playback. */
+internal class AnimationCompositionTracker {
+    private val appliedClips = mutableSetOf<Int>()
+
+    var hasRetainedComposition = false
+        private set
+    var lastAppliedClip: Int? = null
+        private set
+
+    fun record(playing: Map<Int, ModelNode.PlayingAnimation>) {
+        playing.forEach { (clip, animation) ->
+            if (animation.speed == 0f) return@forEach
+            if (appliedClips.isNotEmpty() && clip !in appliedClips) {
+                hasRetainedComposition = true
+            }
+            appliedClips += clip
+            lastAppliedClip = clip
+        }
+    }
 }
 
 /**

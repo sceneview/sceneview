@@ -32,10 +32,19 @@ internal fun qualifiesForAnimationEnvelope(renderableVisibility: List<Boolean>):
 internal fun autoFitClips(
     playing: Collection<Int>,
     animationCount: Int,
+    retainedClip: Int? = null,
     max: Int = MAX_AUTO_FIT_CLIPS,
 ): List<Int> {
     if (animationCount <= 0 || max <= 0) return emptyList()
-    val source = playing.takeIf { it.isNotEmpty() } ?: (0 until animationCount).toList()
+    val source = playing.takeIf { it.isNotEmpty() } ?: buildList {
+        addAll(0 until animationCount)
+        // Filament keeps the last applied transforms after playback stops. Move that clip to the
+        // sampling tail so a capped idle fallback cannot discard the pose currently on screen.
+        if (retainedClip in 0 until animationCount) {
+            remove(retainedClip)
+            add(retainedClip!!)
+        }
+    }
     val valid = source.asSequence()
         .filter { it in 0 until animationCount }
         .distinct()
@@ -67,7 +76,7 @@ internal data class AutoFraming(
 )
 
 internal data class AutoFramingPlayback(
-    val modelIdentity: Any,
+    val modelIdentity: Int,
     val clips: List<Int>,
 )
 
@@ -78,7 +87,9 @@ internal fun autoFramingPlaybackSignature(contentRoots: List<Node>): List<AutoFr
     fun visit(node: Node) {
         if (!node.isVisible) return
         if (node is ModelNode) {
-            playback += AutoFramingPlayback(node, node.playingAnimations.keys.toList())
+            playback += AutoFramingPlayback(
+                System.identityHashCode(node), node.playingAnimations.keys.toList()
+            )
         }
         node.childNodes.forEach(::visit)
     }
@@ -136,7 +147,11 @@ internal fun resolveAutoFraming(
     if (mode != FitMode.Silhouette || !computeEnvelope) return AutoFraming(mode, null)
     val envelopes = qualifying.mapNotNull { modelNode ->
         runCatching {
-            val clips = autoFitClips(modelNode.playingAnimations.keys, modelNode.animationCount)
+            val clips = autoFitClips(
+                modelNode.playingAnimations.keys,
+                modelNode.animationCount,
+                modelNode.lastAppliedAnimationClip,
+            )
             // ModelNode's entity is `modelInstance.root` (`liveRoot()` in its constructor), the
             // same glTF asset root whose coordinates Model.animationEnvelope returns. Therefore
             // the root node's world transform takes those model-space boxes directly to world.

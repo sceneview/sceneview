@@ -3,6 +3,8 @@ package io.github.sceneview
 import com.google.android.filament.Box
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.node.AnimationCompositionTracker
+import io.github.sceneview.node.ModelNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -44,6 +46,17 @@ class AutoFramingTest {
     }
 
     @Test
+    fun `sequential clips retain a composed pose`() {
+        val tracker = AnimationCompositionTracker()
+        tracker.record(mapOf(0 to ModelNode.PlayingAnimation()))
+
+        tracker.record(mapOf(1 to ModelNode.PlayingAnimation()))
+
+        assertTrue(tracker.hasRetainedComposition)
+        assertEquals(1, tracker.lastAppliedClip)
+    }
+
+    @Test
     fun `animation envelopes require every owned renderable to be visible`() {
         assertTrue(qualifiesForAnimationEnvelope(listOf(true, true)))
         assertTrue(!qualifiesForAnimationEnvelope(listOf(true, false)))
@@ -62,11 +75,21 @@ class AutoFramingTest {
 
     @Test
     fun `clip cap keeps the last applied pose controller`() {
-        val clips = autoFitClips(emptyList(), animationCount = 9)
+        val clips = autoFitClips(emptyList(), animationCount = 9, retainedClip = 0)
 
         assertEquals(MAX_AUTO_FIT_CLIPS, clips.size)
-        assertEquals((1..8).toList(), clips)
-        assertTrue(clips.contains(8))
+        assertEquals((2..8).toList() + 0, clips)
+        assertTrue(clips.contains(0))
+    }
+
+    @Test
+    fun `playback keys keep only non-owning model identities`() {
+        val model = Any()
+
+        val playback = AutoFramingPlayback(System.identityHashCode(model), listOf(0))
+
+        assertEquals(System.identityHashCode(model), playback.modelIdentity)
+        assertEquals(Int::class, playback.modelIdentity::class)
     }
 
     @Test

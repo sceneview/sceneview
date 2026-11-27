@@ -542,7 +542,7 @@ class FramingGateTest {
     @Test
     fun playbackChangesRearmWithoutPuttingSampledEnvelopesInTheKey() {
         val gate = FramingGate()
-        val model = Any()
+        val model = System.identityHashCode(Any())
         val resting = AutoFitFramingKey(
             ViewportPadding.Zero, null, null, null,
             listOf(AutoFramingPlayback(model, emptyList()))
