@@ -70,10 +70,21 @@ class PlaneRenderer(
     // together and destroyed together, so live instances are always 2 × live visualizers.
     private fun newVisualizers() = OwnedVisualizers<Plane, PlaneVisualizer, MaterialInstance>(
         destroyVisualizer = { it.destroy() },
-        destroyInstance = { engine.safeDestroyMaterialInstance(it) },
+        destroyInstance = {
+            depthOcclusion.unbind(it)
+            engine.safeDestroyMaterialInstance(it)
+        },
     )
 
     private var visualizers = newVisualizers()
+    private val depthOcclusion = PlaneDepthOcclusion(engine)
+
+    /**
+     * Hide plane marks behind real surfaces when the session already has supported depth.
+     * Defaults to true. Does not enable ARCore depth or camera-stream occlusion of app models.
+     * `ARSceneView(planeDepthOcclusion = false)` opts out without disabling depth for the app.
+     */
+    var isDepthOcclusionEnabled = true
 
     /**
      * The material every plane is drawn with (`plane_renderer.mat`). Each plane gets its own
@@ -100,6 +111,7 @@ class PlaneRenderer(
             setParameter(MATERIAL_SCAN_PLANE_RADIUS, 1.0f)
             setParameter(MATERIAL_OPACITY, 1.0f)
             setParameter(MATERIAL_FOCUS, 0.0f)
+            depthOcclusion.bind(this)
         }
     }
 
@@ -211,6 +223,7 @@ class PlaneRenderer(
     /** Drops every object owned by the outgoing ARCore session, retaining Filament materials. */
     internal fun resetSession() {
         frame = null
+        depthOcclusion.reset()
         val previous = visualizers
         visualizers = newVisualizers()
         isCameraTracking = false
@@ -229,6 +242,7 @@ class PlaneRenderer(
         // disabled and between geometry updates so stale planes cannot linger through a fade.
         isCameraTracking = frame.camera.isTracking
         cleanupOldPlaneVisualizer()
+        depthOcclusion.update(session, frame, isDepthOcclusionEnabled && isCameraTracking)
         if (isEnabled && frame.fps(this.frame) < maxUpdatesPerSecond) {
             this.frame = frame
             try {
@@ -268,6 +282,7 @@ class PlaneRenderer(
         resetSession()
         materialLoader.destroyMaterial(planeMaterial)
         materialLoader.destroyMaterial(shadowMaterial)
+        depthOcclusion.destroy()
         placeholderTexture.release()
     }
 
@@ -291,6 +306,7 @@ class PlaneRenderer(
 
     private fun createVisualizer(plane: Plane): PlaneVisualizer {
         val planeInstance = planeMaterial.createInstance()
+        depthOcclusion.bind(planeInstance)
         val shadowInstance = shadowMaterial.createInstance()
         val visualizer = PlaneVisualizer(engine, scene, plane).apply {
             setPlaneMaterial(planeInstance)

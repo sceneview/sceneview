@@ -634,6 +634,7 @@ fun ARSceneView(
     arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
     onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: recovery, permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
+    planeDepthOcclusion: Boolean = true,  // Plane marks only, when depth is already configured. Does not enable depth or change model occlusion. false opts out.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -919,11 +920,30 @@ Shape differs as well as colour, so a wall reads as a wall in a dark room, in da
 
 Marks are spaced 0.10 m apart on orthonormal axes along each surface, including tilted planes; floor dots have a 0.009 m radius. Focus and reveal never change their dimensions. The mesh and its feather stay inside the tracked convex polygon; nearer dots naturally appear larger in perspective. No reticle ring is drawn by the plane material.
 
-`PlacementScene` and `AutoPlacementScene` request `AUTOMATIC` depth and enable the existing
+`ARSceneView` (and the deprecated `ARScene` alias) depth-occludes its plane marks by default
+when the **effective session configuration** enables `AUTOMATIC` or `RAW_DEPTH_ONLY` depth.
+The marks sample depth in their own material; the camera stream's model occlusion stays under
+app control. `depthMode` still defaults to `DISABLED`: automatically starting the depth pipeline
+would change the app's power use and explicit configuration. The `sessionConfiguration`
+callback retains precedence, and unsupported devices fall back to unoccluded marks. Before the
+first depth image, marks remain visible; disabling depth or switching sessions drops old depth.
+
+```kotlin
+// Depth-occluded plane dots; models keep their existing occlusion behaviour.
+ARSceneView(depthMode = Config.DepthMode.AUTOMATIC) { /* AR nodes */ }
+// Keep depth for hit tests, but opt out of the plane material's depth test.
+ARSceneView(depthMode = Config.DepthMode.AUTOMATIC, planeDepthOcclusion = false) { /* AR nodes */ }
+```
+
+The opt-out is reactive and is also exposed as `PlaneRenderer.isDepthOcclusionEnabled` for
+imperative renderer owners. It does not bypass camera-stream occlusion if the app separately
+enabled that for all content (`sceneUnderstanding = SceneUnderstanding(occlusion = true)` or
+`cameraStream.isDepthOcclusionEnabled = true`). This API is Android-specific: other maintained
+platforms do not use ARCore's plane renderer.
+
+`PlacementScene` and `AutoPlacementScene` request `AUTOMATIC` depth and retain their existing
 camera depth-occlusion pass when the configured session supports it. Unsupported devices
-keep the flat camera path. In a custom `ARSceneView`, explicitly request
-`depthMode = Config.DepthMode.AUTOMATIC` and
-`sceneUnderstanding = SceneUnderstanding(occlusion = true)` to enable the same occlusion.
+keep the flat camera path.
 
 There is no second renderer and no version switch. Since 4.57.0 `planeRendererVersion` is **deprecated and ignored** (both values draw with `PlaneRenderer`): omit it. `PlaneRendererV2` and `PlaneVisualizerV2` are deprecated aliases of `PlaneRenderer` and `PlaneVisualizer`, and `PlaneRendererBase` is deprecated: write the new names. The textured grid is gone: `PlaneRenderer.planeTexture` is a deprecated 1 × 1 placeholder that nothing samples, `MATERIAL_TEXTURE` and `MATERIAL_COLOR` are no longer material parameters (tint with `MATERIAL_GRID_TINT`), and `maxHitTestPerSecond` is now `maxUpdatesPerSecond`.
 

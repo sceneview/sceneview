@@ -946,6 +946,13 @@ fun ARSceneView(
      */
     onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,
     /**
+     * Depth-occlude the plane marks when the configured session already provides depth.
+     * Defaults to true; false opts out for planes only. Does not change [depthMode],
+     * [sessionConfiguration], or [ARCameraStream.isDepthOcclusionEnabled] for app models.
+     * Unsupported/disabled depth and frames before the first depth image draw marks normally.
+     */
+    planeDepthOcclusion: Boolean = true,
+    /**
      * DSL block for declaring AR nodes via [ARSceneScope].
      */
     content: (@Composable ARSceneScope.() -> Unit)? = null
@@ -1608,6 +1615,7 @@ fun ARSceneView(
     SideEffect {
         arPlaneRenderer.isEnabled = resolvePlaneVisibility(planeRenderer, sceneUnderstanding)
         arPlaneRenderer.isShadowReceiver = planeShadows
+        arPlaneRenderer.isDepthOcclusionEnabled = planeDepthOcclusion
     }
 
     // ── Grouped scene-understanding flags (#1767) ────────────────────────────────────────────────
@@ -2150,12 +2158,14 @@ private fun onARFrame(
             // `baseline * estimate` (NOT `previous-frame * estimate`, which causes
             // exponential decay to black within ~15 frames — see #1062).
             //
-            // `compareAndSet(null, …)` is used so a future move to multi-frame
-            // dispatch can't double-snapshot — only one writer wins on the
-            // null→value transition. Today `onARFrame` is single-threaded
-            // (rendering thread), so this is belt + braces.
-            baselineMainLightColorRef.compareAndSet(null, light.color)
-            baselineMainLightIntensityRef.compareAndSet(null, light.intensity)
+            // Frame dispatch and Filament access run on the main thread. A null check
+            // snapshots once without identity-based CAS on a boxed Float (#5321).
+            if (baselineMainLightColorRef.get() == null) {
+                baselineMainLightColorRef.set(light.color)
+            }
+            if (baselineMainLightIntensityRef.get() == null) {
+                baselineMainLightIntensityRef.set(light.intensity)
+            }
             val baselineColor = baselineMainLightColorRef.get() ?: light.color
             val baselineIntensity = baselineMainLightIntensityRef.get() ?: light.intensity
             estimation.mainLightColor?.let { light.color = baselineColor * it }
@@ -2698,6 +2708,7 @@ fun ARScene(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    planeDepthOcclusion: Boolean = true,
     content: (@Composable ARSceneScope.() -> Unit)? = null
 ) = ARSceneView(
     modifier = modifier,
@@ -2736,6 +2747,7 @@ fun ARScene(
     onTouchEvent = onTouchEvent,
     permissionHandler = permissionHandler,
     lifecycle = lifecycle,
+    planeDepthOcclusion = planeDepthOcclusion,
     content = content
 )
 
@@ -2880,3 +2892,216 @@ fun ARSceneView(
  * by a polygon's hard edge reads as a dark patch, not as the object's shadow (#5209).
  */
 internal val LocalPlaneShadowReceiver = staticCompositionLocalOf { true }
+
+/** Retains the JVM descriptor from before the plane-only depth-occlusion opt-out. */
+@Deprecated("Binary-compatibility overload. Use the planeDepthOcclusion overload.", level = DeprecationLevel.HIDDEN)
+@Suppress("LongParameterList", "DEPRECATION")
+@Composable
+fun ARSceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    sessionFeatures: Set<Session.Feature> = setOf(),
+    playbackDataset: File? = null,
+    playbackDatasetUri: android.net.Uri? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
+    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
+    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,
+    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,
+    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,
+    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
+    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
+    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
+    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,
+    sceneUnderstanding: SceneUnderstanding? = null,
+    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    view: View = rememberARView(engine),
+    renderQuality: RenderQuality? = null,
+    isOpaque: Boolean = true,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberAREnvironment(engine),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: ARCameraNode = rememberARCameraNode(engine),
+    cameraExposure: Float? = null,
+    emissiveFollowsLightEstimate: Boolean = true,
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    viewNodeWindowManager: WindowManager? = null,
+    onSessionCreated: ((session: Session) -> Unit)? = null,
+    onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionPaused: ((session: Session) -> Unit)? = null,
+    onSessionFailed: ((exception: Exception) -> Unit)? = null,
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    onPlaybackFailed: ((exception: Exception) -> Unit)? = null,
+    onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,
+    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
+    onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
+        ARCameraPermissionOverlay(it)
+    },
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = {
+        ARCoreAvailabilityOverlay(it)
+    },
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,
+    content: (@Composable ARSceneScope.() -> Unit)? = null
+) = ARSceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    sessionFeatures = sessionFeatures,
+    playbackDataset = playbackDataset,
+    playbackDatasetUri = playbackDatasetUri,
+    sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
+    planeFindingMode = planeFindingMode,
+    depthMode = depthMode,
+    instantPlacementMode = instantPlacementMode,
+    geospatialMode = geospatialMode,
+    streetscapeGeometryMode = streetscapeGeometryMode,
+    cloudAnchorMode = cloudAnchorMode,
+    augmentedFaceMode = augmentedFaceMode,
+    imageStabilizationMode = imageStabilizationMode,
+    semanticMode = semanticMode,
+    updateMode = updateMode,
+    focusMode = focusMode,
+    sessionConfiguration = sessionConfiguration,
+    planeRenderer = planeRenderer,
+    planeRendererVersion = planeRendererVersion,
+    sceneUnderstanding = sceneUnderstanding,
+    cameraStream = cameraStream,
+    view = view,
+    renderQuality = renderQuality,
+    isOpaque = isOpaque,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    cameraExposure = cameraExposure,
+    emissiveFollowsLightEstimate = emissiveFollowsLightEstimate,
+    collisionSystem = collisionSystem,
+    viewNodeWindowManager = viewNodeWindowManager,
+    onSessionCreated = onSessionCreated,
+    onSessionResumed = onSessionResumed,
+    onSessionPaused = onSessionPaused,
+    onSessionFailed = onSessionFailed,
+    onSessionFailure = onSessionFailure,
+    onPlaybackFailed = onPlaybackFailed,
+    onConfigDowngraded = onConfigDowngraded,
+    onSessionUpdated = onSessionUpdated,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    permissionHandler = permissionHandler,
+    lifecycle = lifecycle,
+    cameraPermissionOverlay = cameraPermissionOverlay,
+    arCoreAvailabilityOverlay = arCoreAvailabilityOverlay,
+    onARCoreAvailability = onARCoreAvailability,
+    onCameraPermissionStateChanged = onCameraPermissionStateChanged,
+    content = content,
+    planeDepthOcclusion = true,
+)
+
+/** Retains the legacy ARScene JVM descriptor for already compiled callers. */
+@Deprecated("Binary-compatibility overload. Use ARSceneView.", level = DeprecationLevel.HIDDEN)
+@Suppress("DEPRECATION")
+@Composable
+fun ARScene(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    sessionFeatures: Set<Session.Feature> = setOf(),
+    playbackDataset: File? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V2,
+    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    view: View = rememberARView(engine),
+    isOpaque: Boolean = true,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberAREnvironment(engine),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: ARCameraNode = rememberARCameraNode(engine),
+    cameraExposure: Float? = null,
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    viewNodeWindowManager: ViewNode.WindowManager? = null,
+    onSessionCreated: ((session: Session) -> Unit)? = null,
+    onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionPaused: ((session: Session) -> Unit)? = null,
+    onSessionFailed: ((exception: Exception) -> Unit)? = null,
+    onPlaybackFailed: ((exception: Exception) -> Unit)? = null,
+    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
+    onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    content: (@Composable ARSceneScope.() -> Unit)? = null
+) = ARSceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    sessionFeatures = sessionFeatures,
+    playbackDataset = playbackDataset,
+    sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
+    sessionConfiguration = sessionConfiguration,
+    planeRenderer = planeRenderer,
+    planeRendererVersion = planeRendererVersion,
+    cameraStream = cameraStream,
+    view = view,
+    isOpaque = isOpaque,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    cameraExposure = cameraExposure,
+    collisionSystem = collisionSystem,
+    viewNodeWindowManager = viewNodeWindowManager,
+    onSessionCreated = onSessionCreated,
+    onSessionResumed = onSessionResumed,
+    onSessionPaused = onSessionPaused,
+    onSessionFailed = onSessionFailed,
+    onPlaybackFailed = onPlaybackFailed,
+    onSessionUpdated = onSessionUpdated,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    permissionHandler = permissionHandler,
+    lifecycle = lifecycle,
+    content = content
+)

@@ -61,7 +61,12 @@ material {
         { "type": "float", "name": "scanProgress" },
         { "type": "float", "name": "scanPlaneRadius" },
         { "type": "float", "name": "opacity" },
-        { "type": "float", "name": "focus" }
+        { "type": "float", "name": "focus" },
+        { "type": "bool", "name": "depthEnabled" },
+        { "type": "sampler2d", "name": "depthTexture" },
+        { "type": "float3", "name": "depthUvU", "precision": "high" },
+        { "type": "float3", "name": "depthUvV", "precision": "high" },
+        { "type": "float3", "name": "depthUvW", "precision": "high" }
     ],
     "variables" : [
         // xy = world-anchored pattern coordinates (in marks), z = edge ramp.
@@ -70,7 +75,9 @@ material {
         "modelPos",
         // xyz = world point where the camera's optical axis meets this plane, w = 1 if it
         // does in front of the camera. Constant over the plane: computed once per vertex.
-        "spotHit"
+        "spotHit",
+        // xy/w = screen NDC; z = positive view-axis distance in metres.
+        { "name": "depthPosition", "precision": "high" }
     ],
     "requires" : [
         "position"
@@ -93,6 +100,9 @@ vertex {
         pos.y = 0.0;
 
         material.worldPosition = mulMat4x4Float3(getWorldFromModelMatrix(), pos);
+        highp float4 viewPosition = getViewFromWorldMatrix() * material.worldPosition;
+        highp float4 clipPosition = getClipFromViewMatrix() * viewPosition;
+        material.depthPosition = float4(clipPosition.xy, -viewPosition.z, clipPosition.w);
 
         // Pattern coordinates in USER world space (ARCore's world), so the marks stay where
         // they are on the floor while ARCore re-centres and grows the plane.
@@ -118,6 +128,25 @@ vertex {
 }
 
 fragment {
+    // Only the marks sample depth: no z-buffer write, camera material change or model occlusion.
+    float depthVisibility() {
+        if (!materialParams.depthEnabled) return 1.0;
+        highp float3 screen = float3(variable_depthPosition.xy / variable_depthPosition.w, 1.0);
+        highp float denominator = dot(materialParams.depthUvW, screen);
+        if (abs(denominator) < 1e-5) return 1.0;
+        highp float2 uv = float2(dot(materialParams.depthUvU, screen),
+                                dot(materialParams.depthUvV, screen)) / denominator;
+        if (any(lessThan(uv, float2(0.0))) || any(greaterThan(uv, float2(1.0)))) return 1.0;
+        highp float depth = dot(texture(materialParams_depthTexture, uv).rg,
+                               float2(255.0, 256.0 * 255.0)) * 0.001;
+        // Zero and the temporal filter's 0xFFFF sentinel mean no depth. The range fade and
+        // distance-dependent tolerance match the camera path so a floor does not hide itself.
+        if (depth <= 0.0 || depth >= 8.0) return 1.0;
+        highp float tolerance = 0.03 + depth * (0.02 + 0.01 * depth);
+        float hidden = smoothstep(tolerance, tolerance + 0.05, variable_depthPosition.z - depth);
+        return 1.0 - hidden * (1.0 - smoothstep(5.0, 8.0, depth));
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
 
@@ -195,7 +224,7 @@ fragment {
         float distanceFade = 1.0 - smoothstep(3.0, 6.5, cameraDistance);
         float emphasis = mix(0.6, 1.0, focus);
         float opacity = clamp(materialParams.opacity, 0.0, 1.0);
-        float fade = edgeFade * distanceFade * reveal;
+        float fade = edgeFade * distanceFade * reveal * depthVisibility();
 
         // Light: what the mark, the film and the reticle add to the camera image.
         float light = markMask * materialParams.gridAlpha * emphasis * (1.0 + front)
