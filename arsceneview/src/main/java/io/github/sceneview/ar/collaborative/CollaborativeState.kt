@@ -327,21 +327,6 @@ public constructor(
         return logicalClock <= ceiling
     }
 
-    /** Current node writes for a late-join replay, bounded by [maxCount]. */
-    internal fun nodeSnapshots(maxCount: Int): List<CollaborativeMessage.NodeState> =
-        nodesByKey.entries.take(maxCount).mapNotNull { (key, node) ->
-            val version = liveVersions[key] ?: return@mapNotNull null
-            CollaborativeMessage.NodeState(
-                peerId = version.peerId,
-                nodeKey = node.nodeKey,
-                modelKey = node.modelKey,
-                translation = node.translation,
-                quaternion = node.quaternion,
-                scale = node.scale,
-                logicalClock = version.logicalClock,
-            )
-        }
-
     private fun versionOf(nodeKey: String): NodeVersion? =
         liveVersions[nodeKey] ?: tombstones[nodeKey]
 

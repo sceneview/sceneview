@@ -347,16 +347,6 @@ class CollaborativeStateTest {
     }
 
     @Test
-    fun `late join node snapshots are bounded`() {
-        val state = CollaborativeState(local)
-        state.apply(place("p1", clock = 1L, key = "k1"))
-        state.apply(place("p1", clock = 2L, key = "k2"))
-        state.apply(place("p1", clock = 3L, key = "k3"))
-
-        assertEquals(listOf("k1", "k2"), state.nodeSnapshots(maxCount = 2).map { it.nodeKey })
-    }
-
-    @Test
     fun `shared anchor is captured`() {
         val state = CollaborativeState(local)
         assertNull(state.sharedAnchor)

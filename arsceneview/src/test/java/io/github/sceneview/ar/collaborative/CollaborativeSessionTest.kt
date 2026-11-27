@@ -75,15 +75,11 @@ class CollaborativeSessionTest {
         }
 
     /** A hub member that only records the lines the others send, in order. */
-    private class WireProbe(
-        hub: LoopbackCollaborativeTransport.LoopbackHub,
-        peerId: String = "probe",
-    ) {
+    private class WireProbe(hub: LoopbackCollaborativeTransport.LoopbackHub) {
         val lines = mutableListOf<String>()
-        val transport = hub.join(peerId)
 
         init {
-            transport.incoming { _, bytes -> lines += bytes.toString(Charsets.UTF_8) }
+            hub.join("probe").incoming { _, bytes -> lines += bytes.toString(Charsets.UTF_8) }
         }
 
         fun poses(): List<CollaborativeMessage.ParticipantPose> =
@@ -261,205 +257,7 @@ class CollaborativeSessionTest {
     }
 
     @Test
-    fun `late join receives the current shared anchor`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val alice = session(hub.join("alice"), "Alice")
-        alice.start()
-        alice.testOnlyReceive(
-            "host",
-            CollaborativeWireFormat.anchor("host", "cloud-current", "room"),
-        )
-        advanceUntilIdle()
-
-        val bob = session(hub.join("bob"), "Bob")
-        bob.start()
-        advanceUntilIdle()
-
-        assertEquals("cloud-current", bob.sharedCloudAnchorId)
-    }
-
-    @Test
-    fun `a newcomer requests replay after its incoming handler is ready`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val alice = session(hub.join("alice"), "Alice")
-        alice.start()
-        alice.placeNode("existing", "chair", at(1f), identity)
-        alice.testOnlyReceive(
-            "host",
-            CollaborativeWireFormat.anchor("host", "cloud-current", "room"),
-        )
-        advanceUntilIdle()
-
-        // Membership changes while Bob has no incoming handler. Any replay
-        // triggered only by that roster event is necessarily lost.
-        val bobTransport = hub.join("bob")
-        advanceUntilIdle()
-        val bob = session(bobTransport, "Bob")
-        bob.start()
-        advanceUntilIdle()
-
-        assertEquals(listOf("existing"), bob.placedNodes.map { it.nodeKey })
-        assertEquals("cloud-current", bob.sharedCloudAnchorId)
-    }
-
-    @Test
-    fun `a session started alone requests synchronization when its first peer connects`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val bob = session(hub.join("bob"), "Bob")
-        bob.start()
-        advanceUntilIdle()
-
-        val alice = WireProbe(hub, "alice")
-        alice.transport.send(
-            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
-        )
-        advanceUntilIdle()
-
-        val request = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).single()
-        assertEquals("bob", request.peerId)
-        assertEquals("alice", request.leaderPeerId)
-    }
-
-    @Test
-    fun `concurrent newcomers replay from the established ready session`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val zoe = session(hub.join("zoe"), "Zoe")
-        zoe.start()
-        zoe.placeNode("existing", "chair", at(1f), identity)
-        advanceUntilIdle()
-
-        val aliceTransport = hub.join("alice")
-        val bobTransport = hub.join("bob")
-        val alice = session(aliceTransport, "Alice")
-        val bob = session(bobTransport, "Bob")
-        alice.start()
-        bob.start()
-        advanceUntilIdle()
-
-        assertEquals(listOf("existing"), alice.placedNodes.map { it.nodeKey })
-        assertEquals(listOf("existing"), bob.placedNodes.map { it.nodeKey })
-    }
-
-    @Test
-    fun `synchronization falls back when a stopped transport peer does not reply`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val aaronTransport = hub.join("aaron")
-        val aaron = session(aaronTransport, "Aaron")
-        aaron.start()
-        advanceUntilIdle()
-        aaron.stop()
-
-        val zoe = session(hub.join("zoe"), "Zoe")
-        zoe.start()
-        advanceUntilIdle()
-        zoe.placeNode("existing", "chair", at(1f), identity)
-        advanceUntilIdle()
-
-        val dave = session(hub.join("dave"), "Dave")
-        dave.start()
-        dave.testOnlyReceive("aaron", CollaborativeWireFormat.syncStatus("aaron", ready = true))
-        advanceUntilIdle()
-
-        assertEquals(listOf("existing"), dave.placedNodes.map { it.nodeKey })
-    }
-
-    @Test
-    fun `a stale completion from before restart cannot finish the new sync attempt`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val alice = WireProbe(hub, "alice")
-        val carol = session(hub.join("carol"), "Carol")
-        carol.start()
-        alice.transport.send(
-            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
-        )
-        runCurrent()
-        val oldAttempt = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).last().attemptId
-
-        carol.stop()
-        carol.start()
-        alice.transport.send(
-            CollaborativeWireFormat.syncStatus("alice", ready = true).toByteArray(),
-        )
-        runCurrent()
-        val newAttempt = alice.lines.mapNotNull(CollaborativeWireFormat::parseSyncRequest).last().attemptId
-        assertTrue(oldAttempt != newAttempt)
-
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.syncComplete("alice", "carol", oldAttempt),
-        )
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.snapshot(
-                "alice",
-                "carol",
-                newAttempt,
-                CollaborativeMessage.NodeState(
-                    "zoe", "existing", "chair", at(1f), identity, unit, 1_000L,
-                ),
-            ),
-        )
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.syncComplete("alice", "carol", newAttempt),
-        )
-        advanceUntilIdle()
-
-        assertEquals(listOf("existing"), carol.placedNodes.map { it.nodeKey })
-    }
-
-    @Test
-    fun `replay election excludes a disconnected previous leader`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val aliceTransport = hub.join("alice")
-        val alice = session(aliceTransport, "Alice")
-        val bob = session(hub.join("bob"), "Bob")
-        alice.start(); bob.start()
-        advanceUntilIdle()
-        alice.placeNode("existing", "chair", at(1f), identity)
-        advanceUntilIdle()
-
-        // Bob's StateFlow can conflate Alice leaving and Carol joining. Carol
-        // must still elect the live Bob and receive Bob's current snapshot.
-        aliceTransport.close()
-        val carol = session(hub.join("carol"), "Carol")
-        carol.start()
-        advanceUntilIdle()
-
-        assertEquals(listOf("existing"), carol.placedNodes.map { it.nodeKey })
-    }
-
-    @Test
-    fun `a replayed anchor cannot overwrite a newer announcement`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        hub.join("alice")
-        val carol = session(hub.join("carol"), "Carol")
-        carol.start()
-
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.anchor("alice", "new-anchor", "room"),
-        )
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.snapshotAnchor(
-                "alice",
-                "carol",
-                "attempt",
-                CollaborativeMessage.SharedAnchor("alice", "old-anchor", "room"),
-            ),
-        )
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.syncComplete("alice", "carol", "attempt"),
-        )
-        advanceUntilIdle()
-
-        assertEquals("new-anchor", carol.sharedCloudAnchorId)
-    }
-
-    @Test
-    fun `a completion captured before restart cannot publish into the new runtime`() = runTest {
+    fun `a host completion captured before restart cannot change the new runtime`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val probe = WireProbe(hub)
         val alice = session(hub.join("alice"), "Alice")
@@ -474,6 +272,33 @@ class CollaborativeSessionTest {
 
         assertNull(alice.sharedCloudAnchorId)
         assertTrue(probe.lines.none { "\"type\":\"anchor\"" in it })
+    }
+
+    @Test
+    fun `a resolve completion captured before restart cannot change the new runtime`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        val staleCompletion = alice.testOnlyCaptureResolvedCompletion()
+
+        alice.stop()
+        alice.start()
+        staleCompletion("old-generation-anchor")
+
+        assertNull(alice.sharedCloudAnchorId)
+        assertNull(alice.testOnlyStateAnchorId)
+    }
+
+    @Test
+    fun `a successful resolve records the anchor in collaborative state`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+
+        alice.testOnlyCaptureResolvedCompletion()("resolved-anchor")
+
+        assertEquals("resolved-anchor", alice.sharedCloudAnchorId)
+        assertEquals("resolved-anchor", alice.testOnlyStateAnchorId)
     }
 
     @Test
@@ -675,14 +500,14 @@ class CollaborativeSessionTest {
             advanceUntilIdle()
         }
 
-        // Dave joins a second later. The existing-peer leader sends a bounded
-        // snapshot that retains Alice's original write and ownership.
+        // Dave joins a second later. Nodes placed before a device joined are
+        // not sent to it, so he has never seen a write to "k" — a restarted
+        // peer is in the same position.
         wallClockMs += 1_000L
         val dave = session(hub.join("dave"), "Dave")
         dave.start()
         advanceUntilIdle()
-        assertEquals("alice", dave.placedNodes.single().ownerPeerId)
-        assertEquals(49f, dave.placedNodes.single().translation[0], 0f)
+        assertTrue(dave.placedNodes.isEmpty())
 
         dave.placeNode("k", "lamp", at(99f), identity)
         advanceUntilIdle()
@@ -1112,36 +937,6 @@ class CollaborativeSessionTest {
         assertTrue(carol.participants.none { it.id == "alice" })
         // The forged sender is not admitted either — the message is dropped whole.
         assertTrue(carol.participants.none { it.id == "mallory" })
-    }
-
-    @Test
-    fun `an established peer ignores a forged relayed snapshot`() = runTest {
-        val hub = LoopbackCollaborativeTransport.LoopbackHub()
-        val alice = session(hub.join("alice"), "Alice")
-        val bob = session(hub.join("bob"), "Bob")
-        val carol = session(hub.join("carol"), "Carol")
-        alice.start(); bob.start(); carol.start()
-        advanceUntilIdle()
-        bob.placeNode("owned", "chair", at(1f), identity)
-        advanceUntilIdle()
-
-        val forged = CollaborativeMessage.NodeState(
-            "bob",
-            "owned",
-            "lamp",
-            at(9f),
-            identity,
-            unit,
-            9_000L,
-        )
-        carol.testOnlyReceive(
-            "alice",
-            CollaborativeWireFormat.snapshot("alice", "carol", "forged-attempt", forged),
-        )
-        advanceUntilIdle()
-
-        assertEquals("chair", carol.placedNodes.single().modelKey)
-        assertEquals(1f, carol.placedNodes.single().translation[0], 0f)
     }
 
     @Test

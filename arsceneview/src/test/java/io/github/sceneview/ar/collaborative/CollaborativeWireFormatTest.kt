@@ -189,24 +189,6 @@ class CollaborativeWireFormatTest {
     }
 
     @Test
-    fun `late join snapshot preserves its relay and original writer`() {
-        val original = CollaborativeMessage.NodeState(
-            "alice", "n-7", "robot",
-            floatArrayOf(-1f, 0f, 5f), floatArrayOf(0f, 0f, 0f, 1f),
-            floatArrayOf(2f, 2f, 2f), 12L,
-        )
-        val line = CollaborativeWireFormat.snapshot("bob", "dave", "attempt-7", original)
-        val message = CollaborativeWireFormat.parseSnapshot(line)!!
-
-        assertEquals("bob", message.relayPeerId)
-        assertEquals("dave", message.targetPeerId)
-        assertEquals("attempt-7", message.attemptId)
-        assertEquals(original, message.nodeState)
-        assertNull(CollaborativeWireFormat.parse(line))
-        assertNull(PreClockWireFormat.parse(line))
-    }
-
-    @Test
     fun `a wall-clock sized counter round-trips`() {
         val counter = 1_791_504_000_123L
         val node = CollaborativeWireFormat.parse(

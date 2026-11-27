@@ -20,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 /**
  * Orchestrates a collaborative (multi-user) AR session: two or more devices
@@ -83,24 +82,18 @@ import java.util.UUID
  * counter jump more than 24 hours ahead is rejected, so `Long.MAX_VALUE`
  * cannot lock a key against local writes.
  *
- * After its incoming handler is registered, a joining peer requests initial
- * state from the lowest-id active peer that has finished synchronising. That
- * leader re-sends the shared anchor and at most
- * [CollaborativeState.MAX_NODES] current nodes in an addressed snapshot. A
- * non-responsive leader is skipped. Snapshot lines preserve the original
- * writer/version, so joining does not become a new placement, and carry a
- * per-attempt id so delayed lines from an earlier start cannot finish a new
- * synchronisation. A newcomer trusts its elected leader's snapshot; an
- * already-synchronised peer ignores every snapshot, and a relayed entry
- * claiming the newcomer itself as owner is always rejected.
+ * A peer joining late sees only writes made after it joined; existing anchors
+ * and nodes are not replayed. Full late-join synchronisation is tracked in
+ * [#4435](https://github.com/sceneview/sceneview/issues/4435).
  *
  * ### Mixed versions (4.53.0 and older)
  *
- * Older peers ignore counters, removals, and late-join snapshot lines they do
- * not understand. Their placements are accepted in arrival order for
- * compatibility, so a key concurrently written by old and new peers is not
- * guaranteed to converge; removals and pre-join state also remain visible or
- * absent on the older peer until an ordinary placement reaches it.
+ * Older peers ignore counters and removals they do not understand. Their
+ * placements are accepted in arrival order for compatibility, so a key
+ * concurrently written by old and new peers is not guaranteed to converge;
+ * removals remain visible on the older peer until an ordinary placement
+ * reaches it. Late-join behaviour is unchanged across versions: only writes
+ * made after the peer joined are received.
  *
  * ### Security & trust model (#2569)
  *
@@ -169,12 +162,7 @@ public constructor(
         private const val OUTBOX_ANCHOR = "anchor"
         private const val OUTBOX_POSE = "pose"
         private const val OUTBOX_NODE_PREFIX = "node:"
-        private const val OUTBOX_SNAPSHOT_PREFIX = "snapshot:"
-        private const val OUTBOX_SYNC_REQUEST = "sync-request"
-        private const val OUTBOX_SYNC_COMPLETE_PREFIX = "sync-complete:"
-
         private const val MILLIS_PER_SECOND = 1000L
-        private const val SYNC_LEADER_TIMEOUT_MILLIS = 1_000L
     }
 
     private val localPeerId: String = transport.localPeerId
@@ -199,18 +187,8 @@ public constructor(
         val outboxSignal = Channel<Unit>(capacity = Channel.CONFLATED)
         val inbox = Channel<Inbound>(capacity = Channel.UNLIMITED)
         var incomingHandle: AutoCloseable? = null
-        var knownPeers: Set<String> = emptySet()
-        val readyPeers = mutableSetOf<String>()
-        val activePeers = mutableSetOf<String>()
-        val failedSyncLeaders = mutableSetOf<String>()
-        var firstConnectionPending = false
-        @Volatile var replayReady = false
-        @Volatile var syncLeader: String? = null
-        @Volatile var syncAttemptId: String? = null
-        @Volatile var syncing = false
-        @Volatile var anchorAnnouncementSeen = false
-        @Volatile var hostNode: CloudAnchorNode? = null
-        @Volatile var resolveTask: com.google.ar.core.ResolveCloudAnchorFuture? = null
+        var hostNode: CloudAnchorNode? = null
+        var resolveTask: com.google.ar.core.ResolveCloudAnchorFuture? = null
     }
 
     @Volatile private var runtime: Runtime? = null
@@ -285,10 +263,6 @@ public constructor(
                 pendingPose = null
             }
             Runtime().also {
-                it.knownPeers = transport.peers.value
-                it.firstConnectionPending = it.knownPeers.isEmpty()
-                it.replayReady = it.knownPeers.isEmpty()
-                it.syncing = it.knownPeers.isNotEmpty()
                 runtime = it
                 started = true
             }
@@ -298,30 +272,13 @@ public constructor(
             onTransportMessage(run, peerId, bytes)
         }
 
-        // Drop participants whose transport link died. A joining runtime
-        // elects only from the current live roster; a disconnected former
-        // minimum can therefore never suppress the request to its successor.
+        // Drop participants whose transport link died.
         transport.peers
             .onEach { live ->
                 if (runtime !== run) return@onEach
                 synchronized(stateLock) {
-                    val disconnected = run.knownPeers - live
-                    run.readyPeers.removeAll(disconnected)
-                    run.activePeers.removeAll(disconnected)
-                    run.failedSyncLeaders.removeAll(disconnected)
-                    run.knownPeers = live
                     if (state.retainParticipants(live)) publishParticipants()
-                    if (run.firstConnectionPending && live.isNotEmpty()) {
-                        run.firstConnectionPending = false
-                        run.syncing = true
-                    }
-                    if (run.syncLeader !in live) {
-                        run.syncLeader = null
-                        run.syncAttemptId = null
-                    }
-                    selectSyncLeader(run)
                 }
-                enqueueSyncStatus(run)
             }
             .launchIn(run.scope)
 
@@ -346,8 +303,6 @@ public constructor(
         }
 
         enqueue(run, OUTBOX_HELLO, CollaborativeWireFormat.hello(localPeerId, displayName))
-        enqueueSyncStatus(run)
-        scheduleSyncBootstrap(run)
     }
 
     /**
@@ -469,7 +424,7 @@ public constructor(
                 run.resolveTask = null
                 if (node != null && !resolveState.isError) {
                     sharedAnchorNode = node
-                    _sharedCloudAnchorId = cloudAnchorId
+                    completeResolvedAnchor(run, cloudAnchorId)
                 } else {
                     logWarning("resolve failed: $resolveState")
                 }
@@ -675,112 +630,26 @@ public constructor(
     private fun merge(run: Runtime, peerId: String, bytes: ByteArray) {
         if (runtime !== run) return
         val line = bytes.toString(Charsets.UTF_8)
-        CollaborativeWireFormat.parseSyncStatus(line)?.let { status ->
-            if (status.peerId != peerId) {
-                logWarning("dropped spoofed sync status from '$peerId'")
-            } else if (peerId in transport.peers.value) {
-                synchronized(stateLock) {
-                    if (runtime !== run) return
-                    run.activePeers += peerId
-                    if (status.ready) run.readyPeers += peerId else run.readyPeers -= peerId
-                    selectSyncLeader(run)
-                }
-            }
-            return
-        }
-        CollaborativeWireFormat.parseSyncRequest(line)?.let { request ->
-            if (request.peerId != peerId) {
-                logWarning("dropped spoofed sync request from '$peerId'")
-            } else if (
-                request.leaderPeerId == localPeerId &&
-                request.peerId in transport.peers.value &&
-                run.replayReady
-            ) {
-                synchronized(stateLock) {
-                    if (runtime === run) {
-                        enqueueStateReplay(run, request.peerId, request.attemptId)
-                    }
-                }
-            }
-            return
-        }
-        CollaborativeWireFormat.parseSnapshotAnchor(line)?.let { snapshot ->
-            if (!acceptSnapshot(
-                    run,
-                    peerId,
-                    snapshot.relayPeerId,
-                    snapshot.targetPeerId,
-                    snapshot.attemptId,
-                )
-            ) return
-            synchronized(stateLock) {
-                if (runtime !== run || run.anchorAnnouncementSeen) return
-                state.applyRemote(
-                    CollaborativeMessage.SharedAnchor(
-                        snapshot.relayPeerId,
-                        snapshot.cloudAnchorId,
-                        snapshot.name,
-                    ),
-                    epochMillis(),
-                )
-                _sharedCloudAnchorId = snapshot.cloudAnchorId
-            }
-            return
-        }
-        CollaborativeWireFormat.parseSyncComplete(line)?.let { complete ->
-            if (acceptSnapshot(
-                    run,
-                    peerId,
-                    complete.relayPeerId,
-                    complete.targetPeerId,
-                    complete.attemptId,
-                )
-            ) {
-                run.syncing = false
-                run.syncLeader = null
-                run.syncAttemptId = null
-                run.replayReady = true
-                enqueueSyncStatus(run)
-            }
-            return
-        }
-        val snapshot = CollaborativeWireFormat.parseSnapshot(line)
-        val message = snapshot?.nodeState ?: CollaborativeWireFormat.parse(line)
+        val message = CollaborativeWireFormat.parse(line)
         if (message == null) {
             logVerbose("dropped unparseable line from $peerId")
             return
         }
         // Security (#2569): identity is bound to the CONNECTION the
         // message arrived on (the transport peer id) — never to the
-        // peer-controlled "peer" body field. No message type
-        // is legitimately relayed on another peer's behalf, so a mismatch
+        // peer-controlled "peer" body field. No message type is legitimately
+        // relayed on another peer's behalf, so a mismatch
         // is impersonation (forged pose, bye-eviction, roster flooding
         // under thousands of distinct forged keys) and is dropped whole.
-        if (snapshot != null) {
-            if (!acceptSnapshot(
-                    run,
-                    peerId,
-                    snapshot.relayPeerId,
-                    snapshot.targetPeerId,
-                    snapshot.attemptId,
-                )
-            ) return
-            if (snapshot.nodeState.peerId == localPeerId) {
-                logWarning("dropped snapshot relaying a write owned by the receiver")
-                return
-            }
-        }
-        val claimedTransportPeer = snapshot?.relayPeerId ?: message.peerId
-        if (claimedTransportPeer != peerId) {
+        if (message.peerId != peerId) {
             logWarning(
                 "dropped spoofed message: transport peer '$peerId' " +
-                    "claimed to be '$claimedTransportPeer'",
+                    "claimed to be '${message.peerId}'",
             )
             return
         }
         synchronized(stateLock) {
             if (runtime !== run) return
-            if (message is CollaborativeMessage.SharedAnchor) run.anchorAnnouncementSeen = true
             if (!state.applyRemote(message, epochMillis())) return
             publishParticipants()
             publishNodes()
@@ -821,105 +690,6 @@ public constructor(
         if (pending.hasNext()) pending.next().also { pending.remove() } else null
     }
 
-    private fun enqueueSyncStatus(run: Runtime) {
-        enqueue(
-            run,
-            OUTBOX_SYNC_REQUEST + ":status",
-            CollaborativeWireFormat.syncStatus(localPeerId, run.replayReady),
-        )
-    }
-
-    private fun selectSyncLeader(run: Runtime) {
-        if (!run.syncing || run.syncLeader != null) return
-        val leader = run.readyPeers
-            .asSequence()
-            .filter { it in run.knownPeers && it !in run.failedSyncLeaders }
-            .minOrNull() ?: return
-        val attemptId = UUID.randomUUID().toString()
-        run.syncLeader = leader
-        run.syncAttemptId = attemptId
-        enqueue(
-            run,
-            OUTBOX_SYNC_REQUEST,
-            CollaborativeWireFormat.syncRequest(localPeerId, leader, attemptId),
-        )
-        run.scope.launch {
-            delay(SYNC_LEADER_TIMEOUT_MILLIS)
-            synchronized(stateLock) {
-                if (
-                    runtime === run && run.syncing &&
-                    run.syncLeader == leader && run.syncAttemptId == attemptId
-                ) {
-                    run.failedSyncLeaders += leader
-                    run.syncLeader = null
-                    run.syncAttemptId = null
-                    selectSyncLeader(run)
-                }
-            }
-        }
-    }
-
-    private fun scheduleSyncBootstrap(run: Runtime) {
-        if (!run.syncing) return
-        run.scope.launch {
-            delay(SYNC_LEADER_TIMEOUT_MILLIS)
-            synchronized(stateLock) {
-                if (
-                    runtime === run && run.syncing && run.readyPeers.isEmpty() &&
-                    (run.activePeers + localPeerId).minOrNull() == localPeerId
-                ) {
-                    run.replayReady = true
-                    enqueueSyncStatus(run)
-                }
-            }
-        }
-    }
-
-    private fun acceptSnapshot(
-        run: Runtime,
-        transportPeerId: String,
-        relayPeerId: String,
-        targetPeerId: String,
-        attemptId: String,
-    ): Boolean =
-        runtime === run &&
-            run.syncing &&
-            targetPeerId == localPeerId &&
-            relayPeerId == run.syncLeader &&
-            attemptId == run.syncAttemptId &&
-            transportPeerId == relayPeerId
-
-    /**
-     * Replays a bounded current-state snapshot when this active, synchronised
-     * session was elected by the joining peer.
-     */
-    private fun enqueueStateReplay(run: Runtime, targetPeerId: String, attemptId: String) {
-        state.sharedAnchor?.let { anchor ->
-            enqueue(
-                run,
-                "$OUTBOX_ANCHOR:$targetPeerId",
-                CollaborativeWireFormat.snapshotAnchor(
-                    localPeerId,
-                    targetPeerId,
-                    attemptId,
-                    anchor,
-                ),
-            )
-        }
-        state.nodeSnapshots(CollaborativeState.MAX_NODES).forEach { node ->
-            enqueue(
-                run,
-                "$OUTBOX_SNAPSHOT_PREFIX$targetPeerId:${node.nodeKey}",
-                CollaborativeWireFormat.snapshot(localPeerId, targetPeerId, attemptId, node),
-            )
-        }
-        enqueue(
-            run,
-            OUTBOX_SYNC_COMPLETE_PREFIX + targetPeerId,
-            CollaborativeWireFormat.syncComplete(localPeerId, targetPeerId, attemptId),
-        )
-    }
-
     private fun completeHostedAnchor(run: Runtime, cloudAnchorId: String, name: String): Boolean =
         synchronized(lifecycleLock) {
             if (runtime !== run) return@synchronized false
@@ -928,13 +698,24 @@ public constructor(
                 state.applyLocal(
                     CollaborativeMessage.SharedAnchor(localPeerId, cloudAnchorId, name),
                 )
-                run.anchorAnnouncementSeen = true
             }
             enqueue(
                 run,
                 OUTBOX_ANCHOR,
                 CollaborativeWireFormat.anchor(localPeerId, cloudAnchorId, name),
             )
+            true
+        }
+
+    private fun completeResolvedAnchor(run: Runtime, cloudAnchorId: String): Boolean =
+        synchronized(lifecycleLock) {
+            if (runtime !== run) return@synchronized false
+            _sharedCloudAnchorId = cloudAnchorId
+            synchronized(stateLock) {
+                state.applyLocal(
+                    CollaborativeMessage.SharedAnchor(localPeerId, cloudAnchorId, "session"),
+                )
+            }
             true
         }
 
@@ -956,9 +737,19 @@ public constructor(
         onTransportMessage(run, peerId, line.toByteArray(Charsets.UTF_8))
     }
 
-    /** Captures the current generation like an ARCore completion callback. */
+    /** Captures the current generation like an ARCore host completion callback. */
     internal fun testOnlyCaptureHostedCompletion(name: String = "test"): (String) -> Unit {
         val run = runtime
         return { cloudAnchorId -> if (run != null) completeHostedAnchor(run, cloudAnchorId, name) }
     }
+
+    /** Captures the current generation like an ARCore resolve completion callback. */
+    internal fun testOnlyCaptureResolvedCompletion(): (String) -> Unit {
+        val run = runtime
+        return { cloudAnchorId -> if (run != null) completeResolvedAnchor(run, cloudAnchorId) }
+    }
+
+    /** The internal anchor record shared by successful host and resolve callbacks. */
+    internal val testOnlyStateAnchorId: String?
+        get() = synchronized(stateLock) { state.sharedAnchor?.cloudAnchorId }
 }
