@@ -231,6 +231,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
@@ -277,11 +279,13 @@ fun ${composableName}AR() {
             onSessionUpdated = { _, frame -> latestFrame = frame },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { e, _ ->
-                    // Hit-test the tap against the latest ARCore frame
-                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (anchor == null) {
-                            anchor = hitResult.createAnchorOrNull()
-                        }
+                    if (anchor == null) {
+                        anchor = latestFrame?.hitTest(e)?.firstOrNull { hit ->
+                            val plane = hit.trackable as? Plane
+                            plane?.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                                plane.trackingState == TrackingState.TRACKING &&
+                                plane.isPoseInPolygon(hit.hitPose)
+                        }?.createAnchorOrNull()
                     }
                 }
             )

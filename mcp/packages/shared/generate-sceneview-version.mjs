@@ -1,9 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const packageName = process.argv[2];
-if (!packageName || !/^[a-z-]+$/.test(packageName)) {
-  throw new Error("Usage: node generate-sceneview-version.mjs <package-name>");
+const packageNames = process.argv.length > 2
+  ? process.argv.slice(2)
+  : ["automotive", "gaming", "healthcare", "interior", "rerun"];
+if (packageNames.some((packageName) => !/^[a-z-]+$/.test(packageName))) {
+  throw new Error("Usage: node generate-sceneview-version.mjs [package-name ...]");
 }
 
 const repositoryRoot = new URL("../../../", import.meta.url);
@@ -13,9 +15,11 @@ if (!version) {
   throw new Error("VERSION_NAME is missing from gradle.properties");
 }
 
-const output = new URL(`../${packageName}/src/sceneview-version.ts`, import.meta.url);
-writeFileSync(
-  fileURLToPath(output),
-  `// Generated from the repository VERSION_NAME by mcp/packages/shared/generate-sceneview-version.mjs.\n` +
-    `export const SCENEVIEW_VERSION = ${JSON.stringify(version)};\n`,
-);
+for (const packageName of packageNames) {
+  const output = new URL(`../${packageName}/src/sceneview-version.ts`, import.meta.url);
+  writeFileSync(
+    fileURLToPath(output),
+    `// Generated from the repository VERSION_NAME by mcp/packages/shared/generate-sceneview-version.mjs.\n` +
+      `export const SCENEVIEW_VERSION = ${JSON.stringify(version)};\n`,
+  );
+}
