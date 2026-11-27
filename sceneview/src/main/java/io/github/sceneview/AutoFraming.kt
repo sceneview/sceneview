@@ -12,8 +12,8 @@ private const val AUTO_FIT_SAMPLES = 24
 internal fun resolveAutoFitMode(
     qualifyingModels: Int,
     hasStaticContent: Boolean,
-    hasConcurrentPlayback: Boolean = false,
-): FitMode = if (qualifyingModels > 0 && !hasStaticContent && !hasConcurrentPlayback) {
+    requiresMeasuredPose: Boolean = false,
+): FitMode = if (qualifyingModels > 0 && !hasStaticContent && !requiresMeasuredPose) {
     FitMode.Silhouette
 } else {
     FitMode.Corners
@@ -25,6 +25,9 @@ internal fun hasConcurrentPlayback(playing: Collection<Int>, animationCount: Int
         .distinct()
         .take(2)
         .count() > 1
+
+internal fun qualifiesForAnimationEnvelope(renderableVisibility: List<Boolean>): Boolean =
+    renderableVisibility.isNotEmpty() && renderableVisibility.all { it }
 
 internal fun autoFitClips(
     playing: Collection<Int>,
@@ -101,7 +104,12 @@ internal fun resolveAutoFraming(
         }
         val model = node as? ModelNode
         val qualifyingModel = model?.takeIf {
-            runCatching { it.skinCount > 0 && it.animationCount > 0 }.getOrDefault(false)
+            runCatching {
+                it.skinCount > 0 && it.animationCount > 0 &&
+                    qualifiesForAnimationEnvelope(it.renderableNodes.map { renderable ->
+                        renderable.isVisible
+                    })
+            }.getOrDefault(false)
         }
         val qualifies = qualifyingModel != null
         if (qualifyingModel != null) qualifying += qualifyingModel
@@ -118,12 +126,13 @@ internal fun resolveAutoFraming(
     contentRoots.forEach { visit(it) }
 
     // Separate clip envelopes cannot represent the composed pose that Filament produces by
-    // applying several clips in sequence. Keep the live, already-composed renderable bounds and
-    // their conservative corner fit instead of replacing them with an unsafe analytic envelope.
-    val concurrentPlayback = qualifying.any {
-        hasConcurrentPlayback(it.playingAnimations.keys, it.animationCount)
+    // applying several clips in sequence. Their transforms remain after a clip finishes, so keep
+    // the live renderable bounds and conservative corner fit once a model has composed any pose.
+    val requiresMeasuredPose = qualifying.any {
+        it.hasRetainedComposedPose ||
+            hasConcurrentPlayback(it.playingAnimations.keys, it.animationCount)
     }
-    val mode = resolveAutoFitMode(qualifying.size, hasStaticContent, concurrentPlayback)
+    val mode = resolveAutoFitMode(qualifying.size, hasStaticContent, requiresMeasuredPose)
     if (mode != FitMode.Silhouette || !computeEnvelope) return AutoFraming(mode, null)
     val envelopes = qualifying.mapNotNull { modelNode ->
         runCatching {

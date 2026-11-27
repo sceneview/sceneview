@@ -118,6 +118,18 @@ class ModelNodeFrameWorkTest {
     }
 
     @Test
+    fun `a composed animation pose stays marked after its clips finish`() {
+        val model = model()
+        model.playingAnimations[0] = ModelNode.PlayingAnimation(loop = false)
+        model.playingAnimations[1] = ModelNode.PlayingAnimation(loop = false)
+
+        frame(listOf(model))
+
+        assertTrue(model.playingAnimations.isEmpty())
+        assertTrue(model.hasRetainedComposedPose)
+    }
+
+    @Test
     fun `a paused animation keeps the model's step`() {
         val model = model()
         val roots = listOf<Node>(model)

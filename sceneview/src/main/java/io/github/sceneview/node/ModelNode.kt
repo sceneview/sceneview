@@ -379,6 +379,10 @@ open class ModelNode(
             if (value.isNotEmpty()) hasOwnFrameWork = true
         }
 
+    /** Whether Filament has written a pose composed from multiple animation clips. */
+    internal var hasRetainedComposedPose = false
+        private set
+
     /**
      * Tracks renderable entities whose AABB was empty and had culling/shadows disabled.
      * Once the AABB becomes valid, culling and shadows are re-enabled and the entity is
@@ -804,6 +808,7 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
+                if (playingAnimations.size > 1) hasRetainedComposedPose = true
                 applyAnimations(
                     animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
                 )

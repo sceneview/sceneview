@@ -22,7 +22,7 @@ class AutoFramingTest {
         assertEquals(
             FitMode.Corners,
             resolveAutoFitMode(
-                1, hasStaticContent = false, hasConcurrentPlayback = true
+                1, hasStaticContent = false, requiresMeasuredPose = true
             )
         )
     }
@@ -37,10 +37,18 @@ class AutoFramingTest {
             resolveAutoFitMode(
                 qualifyingModels = 1,
                 hasStaticContent = false,
-                hasConcurrentPlayback = hasConcurrentPlayback(listOf(0, 1), 2),
+                requiresMeasuredPose = hasConcurrentPlayback(listOf(0, 1), 2),
             )
         )
         assertTrue(!hasConcurrentPlayback(listOf(0, 0, -1, 9), animationCount = 2))
+    }
+
+    @Test
+    fun `animation envelopes require every owned renderable to be visible`() {
+        assertTrue(qualifiesForAnimationEnvelope(listOf(true, true)))
+        assertTrue(!qualifiesForAnimationEnvelope(listOf(true, false)))
+        assertTrue(!qualifiesForAnimationEnvelope(listOf(false, false)))
+        assertTrue(!qualifiesForAnimationEnvelope(emptyList()))
     }
 
     @Test
