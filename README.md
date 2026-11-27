@@ -90,6 +90,13 @@ Install the Android demo, record your screen while you use a demo, and tell us w
 confuses you: [open an issue](https://github.com/sceneview/sceneview/issues/new?labels=user-feedback)
 with the recording attached, or send it from the app (any demo, Settings, then Send feedback).
 
+### Built with SceneView
+
+Two standalone apps built on top of SceneView:
+
+- **[3D AR Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)** ([iOS](https://apps.apple.com/app/id6790808866)) — open `.glb`, `.stl` and `.obj` files or turn a photo into a 3D model and place it at real scale in AR.
+- **[Will It Fit](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit&referrer=utm_source%3Dsceneview%26utm_medium%3Dreadme%26utm_campaign%3Dbuilt_with)** — check whether a sofa, desk or appliance clears a door, hallway turn, lift or car boot, with an AR tape measure.
+
 ---
 
 ## Quick start
