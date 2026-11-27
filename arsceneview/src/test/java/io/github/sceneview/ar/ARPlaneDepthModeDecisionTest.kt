@@ -1,12 +1,46 @@
 package io.github.sceneview.ar
 
 import com.google.ar.core.Config
+import io.github.sceneview.ar.scene.SceneUnderstanding
+import io.github.sceneview.ar.scene.applyModelDepthOcclusion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ARPlaneDepthModeDecisionTest {
+    @Test
+    fun `implicit plane depth preserves both previous model occlusion values without a write`() {
+        assertEquals(Config.DepthMode.AUTOMATIC, resolvePlaneDepthMode(null, true, true))
+        for (previous in listOf(false, true)) {
+            var modelOcclusion = previous
+            var writes = 0
+            // Run the same rule ARSceneView runs on recomposition while plane depth toggles.
+            for (planes in listOf(true, false, true)) {
+                resolvePlaneDepthMode(null, true, planes)
+                applyModelDepthOcclusion(null) { modelOcclusion = it; writes++ }
+                assertEquals(previous, modelOcclusion)
+            }
+            assertEquals("Implicit plane depth cannot touch a custom stream", 0, writes)
+        }
+    }
+
+    @Test
+    fun `explicit grouped model occlusion wins independently of every plane depth request`() {
+        for (requested in listOf(null) + Config.DepthMode.values()) {
+            for (planes in listOf(false, true)) {
+                for (optIn in listOf(false, true)) {
+                    resolvePlaneDepthMode(requested, true, planes)
+                    var modelOcclusion = !optIn
+                    applyModelDepthOcclusion(SceneUnderstanding(occlusion = optIn)) {
+                        modelOcclusion = it
+                    }
+                    assertEquals(optIn, modelOcclusion)
+                }
+            }
+        }
+    }
+
     @Test
     fun `plane-only toggles preserve callback-disabled depth with an explicit automatic request`() {
         val requested = Config.DepthMode.AUTOMATIC

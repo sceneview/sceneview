@@ -919,7 +919,12 @@ Marks are spaced 0.10 m apart on orthonormal axes along each surface, including 
 `ARSceneView` (and the deprecated `ARScene` alias) depth-occludes its plane marks by default
 when the **effective session configuration** enables `AUTOMATIC` or `RAW_DEPTH_ONLY` depth.
 The marks sample depth in their own material; the camera stream's model occlusion stays under
-app control. With no explicit depth mode and `planeDepthOcclusion = true`, a supported device
+app control: enabling depth alone never enables model occlusion. `PlacementScene` and
+`AutoPlacementScene` also leave model occlusion off, as before the plane-depth default.
+To opt in for models, use `ARSceneView(depthMode = Config.DepthMode.AUTOMATIC,
+sceneUnderstanding = SceneUnderstanding(occlusion = true))`, or set
+`cameraStream.isDepthOcclusionEnabled = true` on your own stream. With no explicit depth mode
+and `planeDepthOcclusion = true`, a supported device
 enables `AUTOMATIC` by default, which adds ARCore depth-processing and battery cost. Any explicit
 mode, including `DISABLED`, and the later `sessionConfiguration` callback retain precedence;
 `planeDepthOcclusion = false` keeps depth off when the app did not request it. Unsupported devices

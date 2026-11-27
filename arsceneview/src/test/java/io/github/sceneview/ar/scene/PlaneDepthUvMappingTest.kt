@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.scene
 
 import com.google.ar.core.Config
+import com.google.ar.core.Coordinates2d
 import io.github.sceneview.ar.camera.CameraStreamCoordinates
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -8,6 +9,31 @@ import org.junit.Test
 class PlaneDepthUvMappingTest {
     private val off = Config.ImageStabilizationMode.OFF
     private val eis = Config.ImageStabilizationMode.EIS
+
+    @Test fun `display rotation maps plane depth to the same cropped texel as the camera`() {
+        val coordinates = coordinates()
+        for (turns in 0..3) {
+            fun rotate(u: Float, v: Float): Pair<Float, Float> = when (turns) {
+                0 -> u to v
+                1 -> v to 1f - u
+                2 -> 1f - u to 1f - v
+                else -> 1f - v to u
+            }
+            coordinates.update(off, displayGeometryChanged = true,
+                transform3d = { _, _, _ -> error("EIS is off") },
+                transform2d = { type, input, output ->
+                    assertEquals(Coordinates2d.VIEW_NORMALIZED, type)
+                    repeat(3) {
+                        val (u, v) = rotate(input.get(), input.get())
+                        output.put(.1f + .8f * u).put(.2f + .6f * v)
+                    }
+                },
+            )
+            // Noncentral screen pixel, converted to Android view coordinates before rotation.
+            val (u, v) = rotate(.7f, .25f)
+            assertUv(coordinates, off, .4f, .5f, .1f + .8f * u, .2f + .6f * v)
+        }
+    }
 
     @Test fun `unrotated mapping has no extra vertical flip`() {
         val coordinates = coordinates()

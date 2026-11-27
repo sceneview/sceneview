@@ -109,6 +109,7 @@ import io.github.sceneview.ar.scene.PlaneRenderer
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.ar.scene.PlaneVisualDefaults
 import io.github.sceneview.ar.scene.SceneUnderstanding
+import io.github.sceneview.ar.scene.applyModelDepthOcclusion
 import io.github.sceneview.ar.scene.resolvePlaneVisibility
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
@@ -1681,9 +1682,11 @@ fun ARSceneView(
     // [SceneUnderstanding.physics]). When the underlying ARCore Scene Semantics
     // / Mesh path lands (#1760, #1761), this is the canonical place to wire it.
     SideEffect {
+        applyModelDepthOcclusion(sceneUnderstanding) { enabled ->
+            cameraStream?.isDepthOcclusionEnabled = enabled
+        }
         sceneUnderstanding?.let { su ->
             lightEstimator.isEnabled = su.lighting
-            cameraStream?.isDepthOcclusionEnabled = su.occlusion
             // su.physics: no-op today; wired when #1760/#1761 land.
         }
     }

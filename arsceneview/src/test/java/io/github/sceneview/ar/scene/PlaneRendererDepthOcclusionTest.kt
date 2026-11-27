@@ -69,12 +69,25 @@ class PlaneRendererDepthOcclusionTest {
         val source = File("src/main/java/io/github/sceneview/ar/ARSceneView.kt").readText()
         val writes = Regex("""cameraStream\??\.isDepthOcclusionEnabled\s*=\s*([^\n]+)""")
             .findAll(source).map { it.groupValues[1].trim() }.toList()
-        org.junit.Assert.assertEquals(listOf("su.occlusion"), writes)
+        org.junit.Assert.assertEquals(listOf("enabled"), writes)
+        assertTrue(source.contains("applyModelDepthOcclusion(sceneUnderstanding) { enabled ->"))
         assertTrue(source.contains("arPlaneRenderer.isDepthOcclusionEnabled = planeDepthOcclusion"))
         val publicSignature = source.substringAfter("fun ARSceneView(").substringBefore("\n) {")
         assertTrue(publicSignature.contains("depthMode: Config.DepthMode? = null"))
         assertTrue(publicSignature.contains("planeDepthOcclusion: Boolean = true"))
         val alias = source.substringAfter("fun ARScene(").substringBefore("\n) = ARSceneView(")
         assertTrue(alias.contains("planeDepthOcclusion: Boolean = true"))
+    }
+
+    @Test fun `placement scenes never infer model occlusion from depth availability`() {
+        listOf("PlacementScene.kt", "AutoPlacementScene.kt").forEach { name ->
+            val source = File("src/main/java/io/github/sceneview/ar/$name").readText()
+            assertFalse("$name must leave the default camera stream under app control",
+                source.contains("isDepthOcclusionEnabled"))
+            assertFalse("$name must not opt in to grouped model occlusion",
+                source.contains("sceneUnderstanding ="))
+            assertFalse("$name must use ARSceneView's unchanged default camera stream",
+                source.contains("cameraStream ="))
+        }
     }
 }

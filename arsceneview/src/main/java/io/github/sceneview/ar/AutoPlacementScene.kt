@@ -427,7 +427,6 @@ fun AutoPlacementScene(
         }
     }
     PlacementGuideClock(state)
-    val placementCameraStream = rememberARCameraStream(materialLoader)
     // The surfaces are a guide here; `groundShadows` owns the light-driven shadow catcher.
     Box(modifier = modifier) {
         CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
@@ -436,7 +435,6 @@ fun AutoPlacementScene(
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                cameraStream = placementCameraStream,
                 playbackDataset = playbackDataset,
                 // The surfaces show while the object looks for one and while it moves (#5209).
                 planeRenderer = state.showsPlaneGuide && state.guide.planes,
@@ -490,8 +488,6 @@ fun AutoPlacementScene(
                 },
                 onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
                 onSessionUpdated = { session, frame ->
-                    placementCameraStream.isDepthOcclusionEnabled =
-                        io.github.sceneview.ar.scene.shouldOccludePlanes(session.config.depthMode)
                     val tracked = session.getAllTrackables(Plane::class.java)
                         .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                     if (tracked != planes) planes = tracked

@@ -188,7 +188,6 @@ fun PlacementScene(
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
     val controller = remember { PlacementController() }
-    val placementCameraStream = rememberARCameraStream(materialLoader)
     var isDragging by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
 
@@ -236,8 +235,6 @@ fun PlacementScene(
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            cameraStream = placementCameraStream,
-            depthMode = Config.DepthMode.AUTOMATIC,
             playbackDataset = playbackDataset,
             planeRenderer = showPlaneRenderer,
             planeFindingMode = planeFindingMode,
@@ -260,8 +257,6 @@ fun PlacementScene(
                 }
             },
             onSessionUpdated = { updatedSession, frame ->
-                placementCameraStream.isDepthOcclusionEnabled =
-                    io.github.sceneview.ar.scene.shouldOccludePlanes(updatedSession.config.depthMode)
                 latestFrame = frame
                 if (session !== updatedSession) session = updatedSession
                 // Tracked unconditionally since #3569: the reticle is only composed while the
