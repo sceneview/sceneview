@@ -138,6 +138,13 @@ class PlaneRendererTest {
     }
 
     @Test
+    fun `the ripple wraps time before mobile fragment precision is lost`() {
+        val source = java.io.File("src/main/materials/plane_renderer.mat").readText()
+        assertTrue(source.contains("highp float ripplePhase = getUserTimeMod("))
+        assertFalse("Unbounded engine uptime loses subsecond precision", source.contains("getUserTime()"))
+    }
+
+    @Test
     fun `the shader values match the branches of plane_renderer mat`() {
         // `surfaceKind` in the material: below 0.5 dots, 0.5..1.5 dashes, above 1.5 rings.
         assertEquals(0f, PlaneSurfaceKind.FLOOR.shaderValue, 0f)

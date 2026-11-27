@@ -32,11 +32,4 @@ class ARSurfacesSessionContractTest {
         )
         assertFalse(source.contains("isDepthOcclusionEnabled = false"))
     }
-
-    @Test
-    fun `the ripple wraps time before mobile fragment precision is lost`() {
-        val source = File("../../arsceneview/src/main/materials/plane_renderer.mat").readText()
-        assertTrue(source.contains("highp float ripplePhase = getUserTimeMod("))
-        assertFalse("Unbounded engine uptime loses subsecond precision", source.contains("getUserTime()"))
-    }
 }
