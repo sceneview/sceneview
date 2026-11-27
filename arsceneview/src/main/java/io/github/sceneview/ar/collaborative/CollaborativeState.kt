@@ -289,6 +289,10 @@ public constructor(
         val existing = versionOf(key)
         if (!local && !remoteClockAllowed(version.logicalClock, existing, nowEpochMs)) return false
         if (existing != null && version <= existing) return false
+        // The key may have had a newer tombstone that was evicted from the
+        // bounded map. Do not let an older delayed removal recreate a weaker
+        // per-key tombstone and give a placement above it a resurrection path.
+        if (existing == null && evictedRemovalVersion?.let { version <= it } == true) return false
         val wasPlaced = nodesByKey.remove(key) != null
         liveVersions.remove(key)
         // Re-inserted, not updated in place: the map evicts in insertion

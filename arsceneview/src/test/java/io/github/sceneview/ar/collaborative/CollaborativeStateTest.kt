@@ -323,6 +323,20 @@ class CollaborativeStateTest {
     }
 
     @Test
+    fun `an older delayed removal cannot weaken an evicted tombstone`() {
+        val state = CollaborativeState(local, maxNodes = 1)
+        state.apply(remove("p1", clock = 10L, key = "k"))
+        state.apply(remove("p1", clock = 20L, key = "other"))
+
+        // k's counter-10 tombstone was evicted. Remembering this delayed
+        // counter-4 removal would otherwise let the counter-5 placement
+        // bypass the global eviction floor through the per-key tombstone.
+        assertFalse(state.apply(remove("p1", clock = 4L, key = "k")))
+        assertFalse(state.apply(place("p1", clock = 5L, key = "k")))
+        assertTrue(state.placedNodes.isEmpty())
+    }
+
+    @Test
     fun `an evicted removal preserves peer id ordering at the same clock`() {
         val state = CollaborativeState(local, maxNodes = 1)
         state.apply(remove("a", clock = 100L, key = "k"))

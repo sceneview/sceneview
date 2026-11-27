@@ -270,12 +270,7 @@ public constructor(
 
         // Drop participants whose transport link died.
         transport.peers
-            .onEach { live ->
-                if (runtime !== run) return@onEach
-                synchronized(stateLock) {
-                    if (state.retainParticipants(live)) publishParticipants()
-                }
-            }
+            .onEach { live -> retainParticipants(run, live) }
             .launchIn(run.scope)
 
         // Reader loop — merges inbound lines one at a time, in arrival order.
@@ -289,11 +284,7 @@ public constructor(
             while (run.outboxSignal.receiveCatching().isSuccess) {
                 while (true) {
                     val line = nextOutboundLine(run) ?: break
-                    try {
-                        transport.send(line)
-                    } catch (e: Exception) {
-                        logWarning("send failed: ${e.message}")
-                    }
+                    if (!sendOutboundLine(run, line)) break
                 }
             }
         }
@@ -311,12 +302,16 @@ public constructor(
         val run = synchronized(lifecycleLock) {
             if (!started) return
             started = false
-            runtime.also { runtime = null }
-        } ?: return
-        try {
-            transport.send(CollaborativeWireFormat.bye(localPeerId).toByteArray())
-        } catch (e: Exception) {
-            logWarning("bye failed: ${e.message}")
+            val stoppedRun = runtime ?: return
+            runtime = null
+            // Serialized with generation-checked writer sends: every line
+            // from this runtime is either sent before its bye or discarded.
+            try {
+                transport.send(CollaborativeWireFormat.bye(localPeerId).toByteArray())
+            } catch (e: Exception) {
+                logWarning("bye failed: ${e.message}")
+            }
+            stoppedRun
         }
         try {
             run.incomingHandle?.close()
@@ -667,6 +662,16 @@ public constructor(
         }
     }
 
+    private fun retainParticipants(run: Runtime, livePeerIds: Set<String>) {
+        synchronized(stateLock) {
+            // The generation check and mutation must share the lock. An old
+            // observer may already be waiting here while stop/start replaces
+            // the state object with the next runtime's fresh roster.
+            if (runtime !== run) return
+            if (state.retainParticipants(livePeerIds)) publishParticipants()
+        }
+    }
+
     private fun publishParticipants() {
         _participants = state.participants
     }
@@ -699,6 +704,18 @@ public constructor(
         val pending = run.outbox.values.iterator()
         if (pending.hasNext()) pending.next().also { pending.remove() } else null
     }
+
+    /** Sends [line] only while [run] is still the active generation. */
+    private fun sendOutboundLine(run: Runtime, line: ByteArray): Boolean =
+        synchronized(lifecycleLock) {
+            if (runtime !== run) return@synchronized false
+            try {
+                transport.send(line)
+            } catch (e: Exception) {
+                logWarning("send failed: ${e.message}")
+            }
+            true
+        }
 
     private fun completeHostedAnchor(run: Runtime, cloudAnchorId: String, name: String): Boolean =
         synchronized(lifecycleLock) {
@@ -766,6 +783,19 @@ public constructor(
         return { cloudAnchorId ->
             if (run != null) completeResolvedAnchor(run, cloudAnchorId, onRejected)
         }
+    }
+
+    /** Captures one dequeued line like a writer paused immediately before send. */
+    internal fun testOnlyTakeNextOutboundSend(): (() -> Boolean)? {
+        val run = runtime ?: return null
+        val line = nextOutboundLine(run) ?: return null
+        return { sendOutboundLine(run, line) }
+    }
+
+    /** Captures a transport-roster update from the current runtime generation. */
+    internal fun testOnlyCapturePeerRosterUpdate(livePeerIds: Set<String>): () -> Unit {
+        val run = runtime
+        return { if (run != null) retainParticipants(run, livePeerIds) }
     }
 
     /** Pauses a pose publisher after it captures its runtime generation. */

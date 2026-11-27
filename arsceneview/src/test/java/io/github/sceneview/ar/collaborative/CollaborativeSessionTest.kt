@@ -259,6 +259,49 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `a writer from a stopped runtime cannot send an anchor after restart`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val probe = WireProbe(hub)
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        advanceUntilIdle()
+
+        alice.testOnlyCaptureHostedCompletion()("anchor-a")
+        val staleSend = checkNotNull(alice.testOnlyTakeNextOutboundSend())
+
+        alice.stop()
+        alice.start()
+        alice.testOnlyCaptureHostedCompletion()("anchor-b")
+        assertFalse(staleSend())
+        advanceUntilIdle()
+
+        val anchors = probe.lines.mapNotNull {
+            CollaborativeWireFormat.parse(it) as? CollaborativeMessage.SharedAnchor
+        }
+        assertEquals(listOf("anchor-b"), anchors.map { it.cloudAnchorId })
+    }
+
+    @Test
+    fun `a roster update from a stopped runtime cannot clear restarted participants`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        alice.start()
+        alice.testOnlyReceive("bob", CollaborativeWireFormat.hello("bob", "Bob"))
+        advanceUntilIdle()
+        assertTrue(alice.participants.any { it.id == "bob" })
+
+        val staleEmptyRoster = alice.testOnlyCapturePeerRosterUpdate(emptySet())
+        alice.stop()
+        alice.start()
+        alice.testOnlyReceive("carol", CollaborativeWireFormat.hello("carol", "Carol"))
+        advanceUntilIdle()
+        assertTrue(alice.participants.any { it.id == "carol" })
+
+        staleEmptyRoster()
+        assertTrue(alice.participants.any { it.id == "carol" })
+    }
+
+    @Test
     fun `a host completion captured before restart cannot change the new runtime`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val probe = WireProbe(hub)
@@ -572,6 +615,34 @@ class CollaborativeSessionTest {
         assertEquals("alice", alice.placedNodes.single().ownerPeerId)
         assertEquals("chair", alice.placedNodes.single().modelKey)
         assertEquals(1, probe.nodeLines().size)
+    }
+
+    @Test
+    fun `remote counter jumps on one key do not poison a local write to another`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        val oneDayMs = 24L * 60L * 60L * 1_000L
+        val jumps = listOf(wallClockMs + oneDayMs, wallClockMs + 2L * oneDayMs)
+        for (clock in jumps) {
+            val line = CollaborativeWireFormat.node(
+                "zed", "jumped", "lamp", at(9f), identity, unit, clock,
+            )
+            alice.testOnlyReceive("zed", line)
+            bob.testOnlyReceive("zed", line)
+        }
+        advanceUntilIdle()
+        assertTrue(alice.placedNodes.any { it.nodeKey == "jumped" })
+        assertTrue(bob.placedNodes.any { it.nodeKey == "jumped" })
+
+        alice.placeNode("fresh", "chair", at(1f), identity)
+        advanceUntilIdle()
+
+        assertEquals("alice", alice.placedNodes.first { it.nodeKey == "fresh" }.ownerPeerId)
+        assertEquals("alice", bob.placedNodes.first { it.nodeKey == "fresh" }.ownerPeerId)
     }
 
     @Test
