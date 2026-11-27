@@ -59,18 +59,19 @@ private fun Aabb.toBox() = Box(center.x, center.y, center.z, halfExtent.x, halfE
  * on a macOS/JDK 21 JVM, median preparation was 0.45 ms and sampling 24 poses 0.35–0.57 ms (2026-11-13,
  * warm process, excluding the existing JSON parse and object headers; not an Android benchmark).
  *
- * Each pose encloses its joints plus the rest mesh's overhang beyond the rest joint extent on
- * each of the six faces. This **flesh-margin heuristic** is not vertex skinning: it does not prove
- * containment of moving flesh, morph targets, animated rigid attachments or unsampled extrema.
- * LINEAR rotations use shortest-path slerp; STEP and CUBICSPLINE follow glTF interpolation.
+ * Each pose encloses its joints and renderable origins plus the rest mesh's overhang beyond their
+ * rest extent on each of the six faces. This **flesh-margin heuristic** is not vertex skinning: it
+ * does not prove containment of moving flesh, morph targets or unsampled extrema. Rigid animated
+ * renderables and their animated ancestors are sampled with the skeleton. LINEAR rotations use
+ * shortest-path slerp; STEP and CUBICSPLINE follow glTF interpolation.
  *
  * No skin, no clip, an unknown [clip], unsupported animation data (sparse, meshopt or embedded
  * data-URI accessors), or a parse/sample failure returns only [restPoseBoundingBox]. Models made
  * outside `ModelLoader` also fall back; that case reads Filament's box and requires the main thread.
  * `SceneView(autoFitContent = true)` automatically selects this envelope and silhouette fitting
- * when every rendered model is skinned and animated, no other content renders, and at most one
- * clip plays per model. Concurrent clips instead use their measured composed pose and corners.
- * Pass `FitMode.Corners` to opt out of automatic selection.
+ * when every rendered model is skinned and animated and no other content renders. Clips whose
+ * channels retain a composed pose are sampled together; a later clip that replaces every earlier
+ * channel discards that earlier pose. Pass `FitMode.Corners` to opt out of automatic selection.
  */
 fun Model.animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope =
     AnimationEnvelopes[this]?.envelope(clip, samples) ?: AnimationEnvelope(listOf(restPoseBoundingBox))
@@ -91,6 +92,21 @@ fun Model.animationEnvelope(clip: String, samples: Int = 24): AnimationEnvelope 
 fun Model.animationEnvelope(clips: Collection<Int>, samples: Int = 24): AnimationEnvelope =
     AnimationEnvelopes[this]?.envelope(clips, samples)
         ?: AnimationEnvelope(listOf(restPoseBoundingBox))
+
+/** Internal composed-pose sampler used by automatic framing. */
+internal fun Model.composedAnimationEnvelope(
+    clips: Collection<Int>,
+    samples: Int = 24,
+): AnimationEnvelope = AnimationEnvelopes[this]?.composedEnvelope(clips, samples)
+    ?: AnimationEnvelope(listOf(restPoseBoundingBox))
+
+/** Whether every renderable-affecting channel in [clips] is represented by the sampler. */
+internal fun Model.animationEnvelopeCovers(clips: Collection<Int>): Boolean =
+    AnimationEnvelopes[this]?.data?.coversRenderables(clips) == true
+
+/** Whether [covering] replaces every renderable-affecting channel written by [covered]. */
+internal fun Model.animationClipReplaces(covering: Int, covered: Int): Boolean =
+    AnimationEnvelopes[this]?.data?.replaces(covering, covered) == true
 
 /** Does not retain the model, JSON, source buffers, resource resolver or native handles. */
 internal object AnimationEnvelopes {
@@ -114,6 +130,9 @@ internal object AnimationEnvelopes {
 
     internal class Entry(val data: GltfAnimationData?, private val rest: AnimationEnvelope) {
         private val cache by lazy { LinkedHashMap<Pair<Int, Int>, AnimationEnvelope>(8, 0.75f, true) }
+        private val composedCache by lazy {
+            LinkedHashMap<Pair<List<Int>, Int>, AnimationEnvelope>(8, 0.75f, true)
+        }
 
         @Synchronized
         fun envelope(clip: Int, samples: Int): AnimationEnvelope {
@@ -138,6 +157,21 @@ internal object AnimationEnvelopes {
                 if (sampled !== rest) poses += sampled.poseBounds.drop(1)
             }
             return AnimationEnvelope(poses.map { it.toBox() })
+        }
+
+        @Synchronized
+        fun composedEnvelope(clips: Collection<Int>, samples: Int): AnimationEnvelope {
+            if (data == null) return rest
+            val key = clips.distinct() to samples.coerceIn(2, 120)
+            return composedCache.getOrPut(key) {
+                val result = try {
+                    data.sampleComposed(key.first, key.second, rest.bounds) ?: rest
+                } catch (_: RuntimeException) {
+                    rest
+                }
+                if (composedCache.size >= 8) composedCache.remove(composedCache.keys.first())
+                result
+            }
         }
     }
 }

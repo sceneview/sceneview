@@ -30,19 +30,16 @@ class AutoFramingTest {
     }
 
     @Test
-    fun `concurrent clips fall back to the measured composed pose`() {
-        // Independent envelopes would only see each +10 translation, while Filament composes a
-        // parent and child clip to +20. The automatic path must not select that unsafe envelope.
-        assertTrue(hasConcurrentPlayback(listOf(0, 1), animationCount = 2))
-        assertEquals(
-            FitMode.Corners,
-            resolveAutoFitMode(
-                qualifyingModels = 1,
-                hasStaticContent = false,
-                requiresMeasuredPose = hasConcurrentPlayback(listOf(0, 1), 2),
-            )
-        )
-        assertTrue(!hasConcurrentPlayback(listOf(0, 0, -1, 9), animationCount = 2))
+    fun `concurrent clips retain their application order for composed sampling`() {
+        val tracker = AnimationCompositionTracker()
+
+        tracker.record(linkedMapOf(
+            0 to ModelNode.PlayingAnimation(),
+            1 to ModelNode.PlayingAnimation(),
+        ))
+
+        assertTrue(tracker.hasRetainedComposition)
+        assertEquals(listOf(0, 1), tracker.retainedClips)
     }
 
     @Test
@@ -53,6 +50,20 @@ class AutoFramingTest {
         tracker.record(mapOf(1 to ModelNode.PlayingAnimation()))
 
         assertTrue(tracker.hasRetainedComposition)
+        assertEquals(1, tracker.lastAppliedClip)
+    }
+
+    @Test
+    fun `a clip replacing every earlier channel drops the stale composition`() {
+        val tracker = AnimationCompositionTracker()
+        tracker.record(mapOf(0 to ModelNode.PlayingAnimation()))
+
+        tracker.record(mapOf(1 to ModelNode.PlayingAnimation())) { covering, covered ->
+            covering == 1 && covered == 0
+        }
+
+        assertTrue(!tracker.hasRetainedComposition)
+        assertEquals(listOf(1), tracker.retainedClips)
         assertEquals(1, tracker.lastAppliedClip)
     }
 
@@ -80,6 +91,22 @@ class AutoFramingTest {
         assertEquals(MAX_AUTO_FIT_CLIPS, clips.size)
         assertEquals((2..8).toList() + 0, clips)
         assertTrue(clips.contains(0))
+    }
+
+    @Test
+    fun `paused selection keeps the clip that last wrote the displayed pose`() {
+        val clips = autoFitClips(
+            playing = emptyList(),
+            animationCount = 2,
+            retainedClip = 0,
+            playbackPresent = true,
+        )
+
+        assertEquals(listOf(0), clips)
+        assertTrue(
+            AutoFramingPlayback(1, clips = emptyList(), pausedClips = listOf(1), retainedClip = 0) !=
+                AutoFramingPlayback(1, clips = listOf(1), retainedClip = 1)
+        )
     }
 
     @Test

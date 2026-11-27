@@ -620,7 +620,8 @@ class SceneAutoFitState {
      * @param fitMode      `null` selects [FitMode.Silhouette] plus the playing clip's envelope (or
      *                     all clips sampled separately, up to eight, when none plays) when every
      *                     rendered model is skinned and animated and nothing else renders.
-     *                     Concurrent playback and other content use [FitMode.Corners]. Pass
+     *                     Composed clip channels are sampled together. Other content or incomplete
+     *                     channel coverage uses [FitMode.Corners] and keeps measured bounds. Pass
      *                     [FitMode.Corners] to opt out. An explicit mode keeps the raw-box path.
      * @param animationEnvelope Optional world-space poses replacing the automatically computed
      *                          envelope. With automatic mode this does not change how the mode is
@@ -698,7 +699,7 @@ class SceneAutoFitState {
         // An automatically computed envelope follows auto-centred content in world space. Include
         // only that intermediate root's position: arbitrary animation or gesture movement with
         // auto-centering disabled must remain a one-shot fit.
-        // Playback changes can select another envelope or force the concurrent-clip corner path.
+        // Playback changes can select another envelope, pause it or change clip composition.
         // This walk reads only stable node/map state; pose sampling stays below the gate.
         val playback = if (fitMode == null) {
             autoFramingPlaybackSignature(contentRoots)
@@ -719,6 +720,8 @@ class SceneAutoFitState {
         } else null
         val resolvedFitMode = fitMode ?: automatic!!.fitMode
         val resolvedEnvelope = animationEnvelope ?: automatic?.animationEnvelope
+        val includeMeasuredPose = animationEnvelope == null &&
+            automatic?.includeMeasuredPose == true
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
         // `computeContentBounds` re-expresses each subtree in the reference's local space.
@@ -730,7 +733,7 @@ class SceneAutoFitState {
             gate.recordNoContent()
             return false
         }
-        if (resolvedFitMode == FitMode.Silhouette || resolvedEnvelope != null) {
+        if (resolvedFitMode == FitMode.Silhouette || resolvedEnvelope != null || includeMeasuredPose) {
             // The union above is reference-local. The directional fit and camera pose are world
             // space: re-box the transformed corners before selecting the silhouette probes.
             val transform = reference.worldTransform
@@ -739,16 +742,29 @@ class SceneAutoFitState {
                 Position(corners.minOf { it.x }, corners.minOf { it.y }, corners.minOf { it.z }),
                 Position(corners.maxOf { it.x }, corners.maxOf { it.y }, corners.maxOf { it.z })
             )
+            val framingEnvelope = if (includeMeasuredPose) {
+                val measured = AnimationEnvelope(listOf(Box(
+                    worldBounds.center.x,
+                    worldBounds.center.y,
+                    worldBounds.center.z,
+                    worldBounds.halfExtent.x,
+                    worldBounds.halfExtent.y,
+                    worldBounds.halfExtent.z,
+                )))
+                mergeEnvelopes(listOfNotNull(resolvedEnvelope, measured))
+            } else {
+                resolvedEnvelope
+            }
             val fill = 1f / (1f + max(0f, padding))
             val fit = cameraNode.fitToBounds(
                 worldBounds, widthFill = fill, heightFill = fill, fitMode = resolvedFitMode,
-                animationEnvelope = resolvedEnvelope
+                animationEnvelope = framingEnvelope
             )
             if (fit == null) {
                 gate.recordNoContent()
                 return false
             }
-            val diagonal = resolvedEnvelope?.bounds?.toAabb()?.diagonal ?: bounds.diagonal
+            val diagonal = framingEnvelope?.bounds?.toAabb()?.diagonal ?: bounds.diagonal
             val framed = gate.shouldFrame(diagonal)
             if (framed) {
                 cameraNode.frame(fit)

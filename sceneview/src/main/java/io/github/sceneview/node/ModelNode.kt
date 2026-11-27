@@ -22,6 +22,7 @@ import io.github.sceneview.math.Transform
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.model.animationClipReplaces
 import io.github.sceneview.model.animationEnvelope
 import io.github.sceneview.model.camerasEntities
 import io.github.sceneview.model.collisionShape
@@ -384,6 +385,10 @@ open class ModelNode(
     /** Whether Filament has written a pose composed from multiple animation clips. */
     internal val hasRetainedComposedPose: Boolean
         get() = animationComposition.hasRetainedComposition
+
+    /** Clips whose non-overridden channels still contribute to Filament's retained pose. */
+    internal val retainedAnimationClips: List<Int>
+        get() = animationComposition.retainedClips
 
     /** Last clip that wrote transforms retained by Filament, even after playback stops. */
     internal val lastAppliedAnimationClip: Int?
@@ -814,7 +819,9 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
-                animationComposition.record(playingAnimations)
+                animationComposition.record(playingAnimations) { covering, covered ->
+                    model.animationClipReplaces(covering, covered)
+                }
                 applyAnimations(
                     animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
                 )
@@ -973,20 +980,25 @@ open class ModelNode(
 
 /** Tracks animation transforms that Filament retains after their clips leave playback. */
 internal class AnimationCompositionTracker {
-    private val appliedClips = mutableSetOf<Int>()
+    private val appliedClips = linkedSetOf<Int>()
 
-    var hasRetainedComposition = false
-        private set
+    val hasRetainedComposition: Boolean
+        get() = appliedClips.size > 1
+    val retainedClips: List<Int>
+        get() = appliedClips.toList()
     var lastAppliedClip: Int? = null
         private set
 
-    fun record(playing: Map<Int, ModelNode.PlayingAnimation>) {
+    fun record(
+        playing: Map<Int, ModelNode.PlayingAnimation>,
+        replaces: (covering: Int, covered: Int) -> Boolean = { _, _ -> false },
+    ) {
         playing.forEach { (clip, animation) ->
             if (animation.speed == 0f) return@forEach
-            if (appliedClips.isNotEmpty() && clip !in appliedClips) {
-                hasRetainedComposition = true
-            }
-            appliedClips += clip
+            appliedClips.removeAll { covered -> covered != clip && replaces(clip, covered) }
+            // Reinsert to mirror the current map's application order. Later clips have final say.
+            appliedClips.remove(clip)
+            appliedClips.add(clip)
             lastAppliedClip = clip
         }
     }

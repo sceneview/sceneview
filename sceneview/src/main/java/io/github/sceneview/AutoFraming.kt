@@ -1,7 +1,9 @@
 package io.github.sceneview
 
 import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.model.animationEnvelopeCovers
 import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.composedAnimationEnvelope
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.RenderableNode
@@ -19,13 +21,6 @@ internal fun resolveAutoFitMode(
     FitMode.Corners
 }
 
-internal fun hasConcurrentPlayback(playing: Collection<Int>, animationCount: Int): Boolean =
-    playing.asSequence()
-        .filter { it in 0 until animationCount }
-        .distinct()
-        .take(2)
-        .count() > 1
-
 internal fun qualifiesForAnimationEnvelope(renderableVisibility: List<Boolean>): Boolean =
     renderableVisibility.isNotEmpty() && renderableVisibility.all { it }
 
@@ -33,16 +28,23 @@ internal fun autoFitClips(
     playing: Collection<Int>,
     animationCount: Int,
     retainedClip: Int? = null,
+    playbackPresent: Boolean = playing.isNotEmpty(),
     max: Int = MAX_AUTO_FIT_CLIPS,
 ): List<Int> {
     if (animationCount <= 0 || max <= 0) return emptyList()
-    val source = playing.takeIf { it.isNotEmpty() } ?: buildList {
-        addAll(0 until animationCount)
-        // Filament keeps the last applied transforms after playback stops. Move that clip to the
-        // sampling tail so a capped idle fallback cannot discard the pose currently on screen.
-        if (retainedClip in 0 until animationCount) {
-            remove(retainedClip)
-            add(retainedClip!!)
+    val source = when {
+        playing.isNotEmpty() -> playing
+        // A paused entry writes no transforms. Keep the pose Filament actually displays instead
+        // of selecting the paused clip merely because it is present in the public map.
+        playbackPresent -> listOfNotNull(retainedClip?.takeIf { it in 0 until animationCount })
+        else -> buildList {
+            addAll(0 until animationCount)
+            // Filament keeps the last applied transforms after playback stops. Move that clip to
+            // the sampling tail so a capped idle fallback cannot discard the on-screen pose.
+            if (retainedClip in 0 until animationCount) {
+                remove(retainedClip)
+                add(retainedClip!!)
+            }
         }
     }
     val valid = source.asSequence()
@@ -73,11 +75,14 @@ private fun Aabb.toBox() = com.google.android.filament.Box(
 internal data class AutoFraming(
     val fitMode: FitMode,
     val animationEnvelope: AnimationEnvelope?,
+    val includeMeasuredPose: Boolean = false,
 )
 
 internal data class AutoFramingPlayback(
     val modelIdentity: Int,
     val clips: List<Int>,
+    val pausedClips: List<Int> = emptyList(),
+    val retainedClip: Int? = null,
 )
 
 /** Cheap, stable invalidation key; unlike [resolveAutoFraming], this never samples clip poses. */
@@ -87,8 +92,12 @@ internal fun autoFramingPlaybackSignature(contentRoots: List<Node>): List<AutoFr
     fun visit(node: Node) {
         if (!node.isVisible) return
         if (node is ModelNode) {
+            val (active, paused) = node.playingAnimations.entries.partition { it.value.speed != 0f }
             playback += AutoFramingPlayback(
-                System.identityHashCode(node), node.playingAnimations.keys.toList()
+                System.identityHashCode(node),
+                active.map { it.key },
+                paused.map { it.key },
+                node.lastAppliedAnimationClip,
             )
         }
         node.childNodes.forEach(::visit)
@@ -136,28 +145,56 @@ internal fun resolveAutoFraming(
     }
     contentRoots.forEach { visit(it) }
 
-    // Separate clip envelopes cannot represent the composed pose that Filament produces by
-    // applying several clips in sequence. Their transforms remain after a clip finishes, so keep
-    // the live renderable bounds and conservative corner fit once a model has composed any pose.
-    val requiresMeasuredPose = qualifying.any {
-        it.hasRetainedComposedPose ||
-            hasConcurrentPlayback(it.playingAnimations.keys, it.animationCount)
+    data class Selection(
+        val node: ModelNode,
+        val clips: List<Int>,
+        val composed: Boolean,
+        val coverageComplete: Boolean,
+    )
+    val selections = qualifying.map { modelNode ->
+        val activeClips = modelNode.playingAnimations
+            .filterValues { it.speed != 0f }
+            .keys
+        val retainedClips = modelNode.retainedAnimationClips
+        val composed = retainedClips.size > 1
+        val clips = if (composed) retainedClips else autoFitClips(
+            activeClips,
+            modelNode.animationCount,
+            modelNode.lastAppliedAnimationClip,
+            playbackPresent = modelNode.playingAnimations.isNotEmpty(),
+        )
+        Selection(
+            modelNode,
+            clips,
+            composed,
+            modelNode.model.animationEnvelopeCovers(clips),
+        )
     }
-    val mode = resolveAutoFitMode(qualifying.size, hasStaticContent, requiresMeasuredPose)
-    if (mode != FitMode.Silhouette || !computeEnvelope) return AutoFraming(mode, null)
-    val envelopes = qualifying.mapNotNull { modelNode ->
+    val hasIncompleteCoverage = selections.any { !it.coverageComplete }
+    val includeMeasuredPose = hasStaticContent || hasIncompleteCoverage
+    val mode = resolveAutoFitMode(
+        qualifying.size,
+        hasStaticContent,
+        requiresMeasuredPose = hasIncompleteCoverage,
+    )
+    if (!computeEnvelope || selections.isEmpty()) {
+        return AutoFraming(mode, null, includeMeasuredPose)
+    }
+    val envelopes = selections.mapNotNull { selection ->
         runCatching {
-            val clips = autoFitClips(
-                modelNode.playingAnimations.keys,
-                modelNode.animationCount,
-                modelNode.lastAppliedAnimationClip,
-            )
             // ModelNode's entity is `modelInstance.root` (`liveRoot()` in its constructor), the
             // same glTF asset root whose coordinates Model.animationEnvelope returns. Therefore
             // the root node's world transform takes those model-space boxes directly to world.
-            modelNode.model.animationEnvelope(clips, AUTO_FIT_SAMPLES)
-                .transformed(modelNode.worldTransform)
+            val envelope = if (selection.composed) {
+                selection.node.model.composedAnimationEnvelope(
+                    selection.clips,
+                    AUTO_FIT_SAMPLES,
+                )
+            } else {
+                selection.node.model.animationEnvelope(selection.clips, AUTO_FIT_SAMPLES)
+            }
+            envelope.transformed(selection.node.worldTransform)
         }.getOrNull()
     }
-    return AutoFraming(mode, mergeEnvelopes(envelopes))
+    return AutoFraming(mode, mergeEnvelopes(envelopes), includeMeasuredPose)
 }

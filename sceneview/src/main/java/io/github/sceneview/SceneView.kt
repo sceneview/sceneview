@@ -175,8 +175,10 @@ import io.github.sceneview.node.setEnvironmentLight
  *                              [FitMode.Silhouette] and the playing clip's envelope (or all clips
  *                              sampled separately, up to eight, when none plays) when every
  *                              rendered model is skinned and animated and nothing else renders.
- *                              Concurrent playback and other content use [FitMode.Corners]. Pass
- *                              [FitMode.Corners] to opt out.
+ *                              Retained or concurrent clip channels are sampled as a composed pose;
+ *                              a fully overriding clip replaces the earlier one. Other content or
+ *                              incomplete channel coverage uses [FitMode.Corners] while retaining
+ *                              measured bounds. Pass [FitMode.Corners] to opt out.
  * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
  *                              *fraction* of the fit distance — `0.15` (the default,
  *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
