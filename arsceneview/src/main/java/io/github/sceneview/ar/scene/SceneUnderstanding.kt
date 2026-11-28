@@ -53,8 +53,9 @@ import io.github.sceneview.ar.light.LightEstimator
  *   [ARCameraStream.isDepthOcclusionEnabled]. Requires the ARCore [Config]'s
  *   depth mode to be either [Config.DepthMode.AUTOMATIC] or
  *   [Config.DepthMode.RAW_DEPTH_ONLY]; otherwise the camera stream falls back
- *   to the flat (non-depth) material. SceneView does NOT auto-enable the depth
- *   `Config.DepthMode` — set that in your `sessionConfiguration` block.
+ *   to the flat (non-depth) material. This flag does not request ARCore depth; use
+ *   `ARSceneView(depthMode = Config.DepthMode.AUTOMATIC, ...)` when opting in.
+ *   The independent plane-depth default never changes this flag or the camera stream's flag.
  *
  * @property lighting Enable AR light estimation. Maps to
  *   [LightEstimator.isEnabled]. Works in tandem with the ARCore [Config]'s
@@ -128,3 +129,14 @@ internal fun resolvePlaneVisibility(
     planeRenderer: Boolean,
     sceneUnderstanding: SceneUnderstanding?,
 ): Boolean = planeRenderer && (sceneUnderstanding?.planeVisualization ?: true)
+
+/**
+ * Only an explicit grouped setting may overwrite the app's model-occlusion flag. In particular,
+ * enabling ARCore depth for plane marks must not write anything to the camera stream (#5327).
+ */
+internal inline fun applyModelDepthOcclusion(
+    sceneUnderstanding: SceneUnderstanding?,
+    apply: (Boolean) -> Unit,
+) {
+    sceneUnderstanding?.let { apply(it.occlusion) }
+}

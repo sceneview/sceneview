@@ -8,9 +8,10 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Plane
-import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.scene.PlaneRenderer
+import io.github.sceneview.ar.scene.PlanePattern
+import io.github.sceneview.ar.scene.isPlaneRenderable
 import io.github.sceneview.ar.scene.planeMaterialPresetFor
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.TransformProvider
@@ -41,15 +42,15 @@ import kotlin.math.sqrt
  *    an even tone where they would shimmer.
  * 3. **Reveal as the plane grows.** A bright front sweeps out from the plane's centre the
  *    first time it appears, and again over the new area each time ARCore extends it.
- * 4. **Focus.** The plane under the centre of the screen is brighter and carries a pool of
- *    light, a thin 12 cm ring and slow ripples where the camera points.
+ * 4. **Focus.** The marks under the centre of the screen become brighter, leaving their gaps
+ *    clear. Mark dimensions stay fixed in metres.
  * 5. **Tidy exit.** Hiding or disabling a plane fades it out instead of cutting it.
  *
  * The mesh is rebuilt on every [updatePlane] (at [PlaneRenderer.maxUpdatesPerSecond]) into
  * preallocated buffers; the animations advance in [tick], called every frame, which only
  * writes the uniforms that changed. Neither path allocates.
  *
- * Threading: every Filament JNI call must run on the render thread. [PlaneRenderer.update] is
+ * Threading: every Filament JNI call must run on the main thread. [PlaneRenderer.update] is
  * called on that thread — do not poke this class from a background coroutine.
  */
 class PlaneVisualizer(
@@ -232,9 +233,9 @@ class PlaneVisualizer(
      * Re-reads the plane's pose, polygon and type from ARCore and re-uploads the mesh.
      */
     fun updatePlane() {
-        isTracking = plane.trackingState == TrackingState.TRACKING
+        isTracking = isPlaneRenderable(plane.trackingState, plane.subsumedBy != null)
         if (!isTracking) {
-            refreshRenderable()
+            removePlaneFromScene()
             return
         }
         plane.centerPose.toMatrix(planeMatrix.data, 0)
@@ -244,6 +245,9 @@ class PlaneVisualizer(
             return
         }
         planeSubmeshMaterial?.let { instance ->
+            val basis = PlanePattern.basis(Float3(planeMatrix.data[4], planeMatrix.data[5], planeMatrix.data[6]))
+            instance.setParameter("patternU", basis.u.x, basis.u.y, basis.u.z)
+            instance.setParameter("patternV", basis.v.x, basis.v.y, basis.v.z)
             lastAppliedPlaneType = applyTypePresetIfChanged(
                 instance = instance,
                 type = plane.type,
@@ -276,6 +280,11 @@ class PlaneVisualizer(
 
     private fun isShowingPlane() = isEnabled && isVisible && isTracking
 
+    /** Matches the mark primitive's lifetime, including its final fade-out frames. */
+    internal val hasVisibleMarks: Boolean
+        get() = currentIndexCount > 0 && planeSubmeshMaterial != null && isTracking &&
+            animation.hasVisibleMarks(isShowingPlane())
+
     private fun pushUniforms() {
         val instance = planeSubmeshMaterial ?: return
         if (animation.opacity != pushedOpacity) {
@@ -299,7 +308,7 @@ class PlaneVisualizer(
 
     /**
      * The feathered fan, written straight into the reused upload buffers: the polygon as an
-     * outer ring at `y = 0`, then the same ring pulled [FEATHER_LENGTH] inwards at `y = 1`.
+     * outer ring at `y = 0`, then the same ring pulled towards its centroid at `y = 1`.
      * The shader reads that `y` as the edge ramp and flattens it.
      */
     private fun rebuildMesh(): Boolean {
@@ -308,21 +317,7 @@ class PlaneVisualizer(
         val boundaryVertexCount = boundary.limit() / 2
         if (boundaryVertexCount < 3 || boundaryVertexCount > MAX_BOUNDARY_VERTS) return false
 
-        positionFloats.clear()
-        for (i in 0 until boundaryVertexCount) {
-            positionFloats.put(boundary.get(i * 2)).put(0f).put(boundary.get(i * 2 + 1))
-        }
-        for (i in 0 until boundaryVertexCount) {
-            val x = boundary.get(i * 2)
-            val z = boundary.get(i * 2 + 1)
-            val magnitude = sqrt(x * x + z * z)
-            val scale = if (magnitude != 0f) {
-                1f - min(FEATHER_LENGTH / magnitude, FEATHER_SCALE)
-            } else {
-                1f - FEATHER_SCALE
-            }
-            positionFloats.put(x * scale).put(1f).put(z * scale)
-        }
+        writeFeatheredPlaneVertices(boundary, positionFloats, FEATHER_LENGTH, FEATHER_SCALE)
         val vertexCount = boundaryVertexCount * 2
         positionData.rewind()
         vertexBuffer.setBufferAt(
@@ -356,7 +351,7 @@ class PlaneVisualizer(
     private fun updateRenderable() {
         val primitives = selectPlanePrimitives(
             // Keep drawing while fading out; drop the submesh once invisible.
-            isVisible = isShowingPlane() || animation.opacity > 0f,
+            isVisible = hasVisibleMarks,
             planeMaterial = planeSubmeshMaterial,
             isShadowReceiver = isEnabled && isTracking && isShadowReceiver,
             shadowMaterial = shadowSubmeshMaterial,
@@ -441,6 +436,36 @@ class PlaneVisualizer(
     }
 }
 
+/** Both rings stay inside ARCore's convex polygon, even when it does not enclose local zero. */
+internal fun writeFeatheredPlaneVertices(
+    boundary: FloatBuffer,
+    out: FloatBuffer,
+    featherLength: Float,
+    featherScale: Float,
+) {
+    val count = boundary.limit() / 2
+    var centerX = 0f
+    var centerZ = 0f
+    out.clear()
+    for (i in 0 until count) {
+        val x = boundary.get(i * 2)
+        val z = boundary.get(i * 2 + 1)
+        centerX += x
+        centerZ += z
+        out.put(x).put(0f).put(z)
+    }
+    if (count == 0) return
+    centerX /= count
+    centerZ /= count
+    for (i in 0 until count) {
+        val x = boundary.get(i * 2) - centerX
+        val z = boundary.get(i * 2 + 1) - centerZ
+        val magnitude = sqrt(x * x + z * z)
+        val scale = 1f - if (magnitude > 0f) min(featherLength / magnitude, featherScale) else featherScale
+        out.put(centerX + x * scale).put(1f).put(centerZ + z * scale)
+    }
+}
+
 /** Past the furthest polygon vertex, so the front's soft tail clears the edge too. */
 private const val REVEAL_MARGIN_M = 0.35f
 
@@ -465,6 +490,9 @@ internal class PlaneRevealAnimation {
     /** Whole-plane opacity, `0..1`. */
     var opacity = 0f
         private set
+
+    /** A just-enabled mark needs drawing even before its first nonzero animation tick. */
+    fun hasVisibleMarks(show: Boolean): Boolean = show || opacity > 0f
 
     /** Focus emphasis, `0..1`. */
     var focus = 0f

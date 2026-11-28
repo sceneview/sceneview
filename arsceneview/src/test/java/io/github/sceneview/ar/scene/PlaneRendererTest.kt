@@ -7,9 +7,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 /**
  * Pure-JVM coverage for the decisions [PlaneRenderer] takes per plane:
@@ -21,8 +18,6 @@ import org.robolectric.annotation.Config
  * Constructing the renderer touches Filament JNI (material loading), which Robolectric does
  * not host: the on-screen result is checked on a device.
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
 class PlaneRendererTest {
 
     // ── Per-type tint (#3507) ───────────────────────────────────────────────────────────────
@@ -132,9 +127,11 @@ class PlaneRendererTest {
     }
 
     @Test
-    fun `the dark halo also outlines the reticle ring`() {
+    fun `plane marks never draw a dark reticle ring or grow with focus`() {
         val source = java.io.File("src/main/materials/plane_renderer.mat").readText()
-        assertTrue(source.contains("shade = max(shade, ringRim * contrast"))
+        assertFalse(source.contains("ringRim"))
+        assertFalse(source.contains("float grow"))
+        assertTrue(source.contains("float radius = materialParams.dotRadius;"))
     }
 
     @Test
@@ -157,6 +154,7 @@ class PlaneRendererTest {
         val source = java.io.File("src/main/materials/plane_renderer.mat").readText()
         listOf(
             PlaneRenderer.MATERIAL_UV_SCALE,
+            "dotRadius", "patternU", "patternV",
             PlaneRenderer.MATERIAL_SURFACE_KIND,
             PlaneRenderer.MATERIAL_GRID_TINT,
             PlaneRenderer.MATERIAL_GRID_ALPHA,

@@ -336,12 +336,12 @@ internal fun autoPlacementPlaneFindingMode(surface: PlacementSurface): Config.Pl
 /**
  * The depth mode [AutoPlacementScene] asks ARCore for. A wall flow turns the depth API on: a
  * depth hit is the only hit ARCore returns on a plain painted wall (#4070). The session
- * downgrades it to `DISABLED` on a device without depth support. A surface flow keeps
- * [ARSceneView]'s default (`DISABLED`), and so does every other scene.
+ * downgrades it to `DISABLED` on a device without depth support. Surface placement also
+ * requests depth so furniture can occlude the discovery marks.
  */
 internal fun autoPlacementDepthMode(surface: PlacementSurface): Config.DepthMode =
     when (surface) {
-        PlacementSurface.SURFACE -> Config.DepthMode.DISABLED
+        PlacementSurface.SURFACE -> Config.DepthMode.AUTOMATIC
         PlacementSurface.WALL -> Config.DepthMode.AUTOMATIC
     }
 
@@ -427,8 +427,7 @@ fun AutoPlacementScene(
         }
     }
     PlacementGuideClock(state)
-    // The surfaces are a guide here, never a shadow catcher: the contact shadow grounds the
-    // object, and `groundShadows` alone decides on the real one (#5209).
+    // The surfaces are a guide here; `groundShadows` owns the light-driven shadow catcher.
     Box(modifier = modifier) {
         CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
             ARSceneView(
@@ -705,11 +704,10 @@ fun AutoPlacementScene(
  * - **Double-tap** ([AutoPlacementState.toggleBaseScale]) animates back to 100 %; at 100 % it
  *   returns to the size last pinched to.
  * - **Selection** draws a thin white ring on the surface around the object's footprint while
- *   [AutoPlacementState.isSelected]; opt out with [AutoPlacementState.showsSelectionRing].
+ *   it is being adjusted; opt out with [AutoPlacementState.showsSelectionRing].
  *   [AutoPlacementNode]'s free-form content draws no ring — it has no bounds to encircle.
- * - **Contact shadow**: a soft dark pool under an object standing on a floor or a table, sized
- *   from its bounds, on top of the real shadow `groundShadows` catches; opt out with
- *   [AutoPlacementState.showsContactShadow].
+ * - **Shadows**: `groundShadows` catches the light-driven shadow. A bounds-based pool is
+ *   available as an opt-in with [AutoPlacementState.showsContactShadow].
  */
 @Composable
 fun ARSceneScope.AutoPlacementModel(
@@ -849,8 +847,11 @@ private fun io.github.sceneview.NodeScope.PlacementFootprint(
     // units changes with the scale: read through an updated state, not a re-registration.
     val pinch = state.scaleFactor
     val groundRadius by rememberUpdatedState(
-        remember(corners, footprint, pinch) {
-            PlacementGroundContact.radius(footprint, PlacementContactShadow.quad(corners, pinch))
+        remember(corners, footprint, pinch, state.showsContactShadow) {
+            PlacementGroundContact.radius(
+                footprint,
+                if (state.showsContactShadow) PlacementContactShadow.quad(corners, pinch) else null,
+            )
         }
     )
     val currentSurface by rememberUpdatedState(surface)
@@ -869,8 +870,8 @@ private fun io.github.sceneview.NodeScope.PlacementFootprint(
 
 /**
  * Scene Viewer's selection affordance: a thin white ring lying on the surface around the
- * placed object's footprint, fading in while [AutoPlacementState.isSelected] and out on
- * deselection. A real node in the anchor's frame — so it sits on the floor in true perspective,
+ * placed object's footprint, fading in during adjustment and out on release. A real node in
+ * the anchor's frame — so it sits on the floor in true perspective,
  * is hidden behind the object where the object stands in front of it, and scales with the pinch
  * — rather than a screen-space overlay chasing the object one frame late. Never touchable, never
  * a shadow caster.
@@ -884,17 +885,11 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
     val stroke = remember(materialLoader) {
         materialLoader.createUnlitColorInstance(io.github.sceneview.math.colorOf(1f, 1f, 1f, 0f))
     }
-    // ARMV's ring look (#5209): a light stroke between two dark edgings, so the ring reads on a
-    // pale parquet in the sun as well as on a dark carpet at night.
-    val edging = remember(materialLoader) {
-        materialLoader.createUnlitColorInstance(io.github.sceneview.math.colorOf(0f, 0f, 0f, 0f))
-    }
     // Declared before the rings' own lifecycles below: Compose disposes in reverse order, so
     // the renderables are gone before their material instances are.
-    DisposableEffect(stroke, edging) {
+    DisposableEffect(stroke) {
         onDispose {
             materialLoader.destroyMaterialInstance(stroke)
-            materialLoader.destroyMaterialInstance(edging)
         }
     }
     val held = state.guide.held
@@ -909,7 +904,7 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
                 center = Position(footprint.centerX, band.tube + SelectionRing.LIFT, footprint.centerZ),
                 majorSegments = SelectionRing.MAJOR_SEGMENTS,
                 minorSegments = SelectionRing.MINOR_SEGMENTS,
-                materialInstance = if (band.isStroke) stroke else edging,
+                materialInstance = stroke,
             ).apply {
                 // Hidden until the fade below has run once: no one-frame flash when unselected.
                 isVisible = false
@@ -938,11 +933,10 @@ private fun io.github.sceneview.NodeScope.SelectionRingNode(
         }
         rings.firstOrNull()?.requestRender()
     }
-    LaunchedEffect(rings, stroke, edging) {
+    LaunchedEffect(rings, stroke) {
         snapshotFlow { opacity.value }.collect { value ->
             rings.forEach { it.isVisible = value > 0f }
             stroke.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
-            edging.setColor(io.github.sceneview.math.colorOf(0f, 0f, 0f, SelectionRing.EDGING_ALPHA * value))
             // A material parameter is invisible to the frame gate: ask for the frame that shows
             // the fade, or a scene with no new camera frame (a finished playback, a paused
             // session) keeps drawing the old ring.
@@ -988,29 +982,18 @@ internal object SelectionRing {
     /** Tube radius: a hairline that stays visible on a mug and slim under a sofa. */
     fun tubeRadius(radius: Float): Float = (radius * 0.012f).coerceIn(0.0018f, 0.006f)
 
-    /** Peak opacity of the dark edging on each side of the stroke, the same in every state. */
-    const val EDGING_ALPHA = 0.45f
-
     /** The stroke under the fingers is this much wider (ARMV's held ring). */
     const val HELD_WIDTH = 1.4f
 
-    /** One torus of the ring: the light stroke, or a dark edging beside it. */
+    /** A light stroke without a dark outline. */
     data class Band(val radius: Float, val tube: Float, val isStroke: Boolean)
 
-    /**
-     * The ring's three tori: the stroke on [Footprint.radius], and a thinner dark edging just
-     * inside and just outside it. [held] widens the stroke and moves the edgings out with it.
-     */
+    /** A white manipulation guide; no black edging that can read as a contact shadow. */
     fun bands(footprint: Footprint, held: Boolean): List<Band> {
         val tube = tubeRadius(footprint.radius) * if (held) HELD_WIDTH else 1f
-        val edge = tube * 0.6f
-        val gap = tube + edge
-        return listOf(
-            Band(footprint.radius - gap, edge, isStroke = false),
-            Band(footprint.radius + gap, edge, isStroke = false),
-            Band(footprint.radius, tube, isStroke = true),
-        )
+        return listOf(Band(footprint.radius, tube, isStroke = true))
     }
+
 }
 
 /**
@@ -1037,7 +1020,7 @@ fun ARSceneScope.AutoPlacementNode(
  * [AutoPlacementNode] for content of a known [size], in metres: width along X, height along Y,
  * depth along Z, the bottom at y = 0 and centred on X and Z (for a wall, the back at z = 0).
  * SceneView then draws what it draws under an [AutoPlacementModel] (#5209): the soft contact
- * shadow that stands it on the floor ([AutoPlacementState.showsContactShadow]) and the selection
+ * optional bounds-based shadow ([AutoPlacementState.showsContactShadow]) and the manipulation
  * ring ([AutoPlacementState.showsSelectionRing], shown when [AutoPlacementState.guide] says so).
  * Draw neither yourself.
  */

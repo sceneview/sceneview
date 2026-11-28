@@ -37,7 +37,7 @@ import kotlin.math.hypot
  * the pinch and turns with the twist like the selection ring, while the fade keeps its width on
  * the floor. Never touchable, never casts nor receives.
  *
- * Off with [AutoPlacementState.showsContactShadow]. Not drawn for a wall placement: a framed
+ * Off by default; opt in with [AutoPlacementState.showsContactShadow]. Not drawn for a wall placement: a framed
  * print or a TV hangs off the wall and does not press into it.
  */
 @Composable
@@ -184,11 +184,11 @@ internal object PlacementContactShadow {
 internal object PlacementGroundContact {
 
     /**
-     * Disc radius in the surface frame, metres: the outer edge of the selection ring's edging, or the
+     * Disc radius in the surface frame, metres: the outer edge of the manipulation stroke, or the
      * contact shadow's [reach][PlacementContactShadow.Quad.reach] when that is farther.
      */
     fun radius(footprint: SelectionRing.Footprint, quad: PlacementContactShadow.Quad?): Float {
-        // The outer edging of the held (widest) ring.
+        // The outside of the held (widest) stroke.
         val ring = if (footprint.radius > 0f) {
             SelectionRing.bands(footprint, held = true).maxOf { it.radius + it.tube }
         } else 0f
