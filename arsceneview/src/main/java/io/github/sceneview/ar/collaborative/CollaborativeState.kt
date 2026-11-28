@@ -26,10 +26,10 @@ package io.github.sceneview.ar.collaborative
  * order the writes arrived in, and applying a write twice changes nothing.
  *
  * The writer picks the counter: above every counter it has seen for that key,
- * and never below its own wall clock in milliseconds. The first half makes a
- * write win over everything its author could see. The second lets a device
- * that joins late, or restarts, win over writes it never received — as long
- * as its clock is not behind the clock of whoever wrote them.
+ * and never below its own wall clock in milliseconds. A remote counter more
+ * than 24 hours ahead of both the receiver's clock and the key's current
+ * counter is rejected. This prevents an untrusted peer from pinning a key at
+ * [Long.MAX_VALUE] while still tolerating ordinary clock skew.
  *
  * A removal leaves a **tombstone** — the key and the pair that removed it — so
  * a placement that was written before the removal but arrives after it is
@@ -43,9 +43,12 @@ package io.github.sceneview.ar.collaborative
  *   order, exactly as before the counter existed: it replaces whatever the
  *   key holds, tombstone included. A session only converges on a key that
  *   such a peer writes if that peer is its only concurrent writer.
- * - **Tombstones are bounded.** At most [maxNodes] are kept; past that the
- *   oldest removal is forgotten, and a placement older than a forgotten
- *   removal would be accepted again if it were still in flight.
+ * - **Tombstones are bounded.** At most [maxNodes] are kept. When an older
+ *   tombstone is evicted, its `(logicalClock, peerId)` pair advances one global
+ *   removal high-water mark, so a delayed placement at or below that mark
+ *   cannot resurrect any evicted key. This constant-space safeguard can reject
+ *   a genuinely old first placement for another key after heavy removal churn;
+ *   a current writer retries with its wall-clock counter and succeeds.
  *
  * ### Roster caps (DoS hardening, #2569)
  *
@@ -88,6 +91,9 @@ public constructor(
          * worst-case roster size bounded against forged `node`-key floods.
          */
         public const val MAX_NODES: Int = 1024
+
+        /** Maximum accepted remote counter lead over local/current time. */
+        private const val MAX_REMOTE_COUNTER_AHEAD_MS: Long = 24L * 60L * 60L * 1000L
     }
 
     private val participantsById = LinkedHashMap<String, Participant>()
@@ -100,10 +106,14 @@ public constructor(
     // A key is in nodesByKey or here, never both.
     private val tombstones = LinkedHashMap<String, NodeVersion>()
 
-    // Highest counter among the writes this state no longer remembers (an
-    // evicted tombstone, a node dropped by removeNode). The next local write
-    // starts above it, so it still wins on a peer that remembers them.
+    // Highest counter among all writes this state explicitly forgot. The next
+    // local write starts above it, so it still wins on a peer that remembers.
     private var forgottenClock = 0L
+
+    // Highest evicted removal. This one is also a global floor for an unknown
+    // remote key, preventing an old placement from resurrecting that key after
+    // its per-key tombstone left the bounded map.
+    private var evictedRemovalVersion: NodeVersion? = null
 
     /** The most recent shared anchor announced for the session, or `null`. */
     public var sharedAnchor: CollaborativeMessage.SharedAnchor? = null
@@ -126,11 +136,16 @@ public constructor(
      *   peer, duplicated existing state, or lost to a newer write).
      */
     public fun apply(message: CollaborativeMessage): Boolean {
+        return applyRemote(message, System.currentTimeMillis())
+    }
+
+    /** [apply] with an injected wall clock for [CollaborativeSession] and tests. */
+    internal fun applyRemote(message: CollaborativeMessage, nowEpochMs: Long): Boolean {
         // A peer never tracks itself as a remote participant or re-applies its
         // own placements — the local scene graph is already the source of
         // truth for anything this device originated.
         if (message.peerId == localPeerId) return false
-        return applyMessage(message)
+        return applyMessage(message, nowEpochMs = nowEpochMs)
     }
 
     /**
@@ -139,7 +154,7 @@ public constructor(
      * can make this device hold, not what its own user places.
      */
     internal fun applyLocal(message: CollaborativeMessage): Boolean =
-        applyMessage(message, local = true)
+        applyMessage(message, local = true, nowEpochMs = 0L)
 
     /**
      * The counter the next local write to [nodeKey] must carry: above the
@@ -158,14 +173,18 @@ public constructor(
     /** `true` while [nodeKey] is placed — not removed, not unknown. */
     internal fun isPlaced(nodeKey: String): Boolean = nodeKey in nodesByKey
 
-    private fun applyMessage(message: CollaborativeMessage, local: Boolean = false): Boolean =
+    private fun applyMessage(
+        message: CollaborativeMessage,
+        local: Boolean = false,
+        nowEpochMs: Long,
+    ): Boolean =
         when (message) {
             is CollaborativeMessage.Hello -> applyHello(message)
             is CollaborativeMessage.Bye -> applyBye(message)
             is CollaborativeMessage.SharedAnchor -> applySharedAnchor(message)
             is CollaborativeMessage.ParticipantPose -> applyPose(message)
-            is CollaborativeMessage.NodeState -> applyNode(message, local)
-            is CollaborativeMessage.NodeRemoval -> applyNodeRemoval(message)
+            is CollaborativeMessage.NodeState -> applyNode(message, local, nowEpochMs)
+            is CollaborativeMessage.NodeRemoval -> applyNodeRemoval(message, local, nowEpochMs)
         }
 
     /** Removes the participant with [peerId] (e.g. transport link dropped). */
@@ -219,7 +238,11 @@ public constructor(
         return existing != updated
     }
 
-    private fun applyNode(message: CollaborativeMessage.NodeState, local: Boolean): Boolean {
+    private fun applyNode(
+        message: CollaborativeMessage.NodeState,
+        local: Boolean,
+        nowEpochMs: Long,
+    ): Boolean {
         val key = message.nodeKey
         val placed = PlacedNode(
             nodeKey = key,
@@ -239,7 +262,12 @@ public constructor(
             NodeVersion(nextNodeClock(key), message.peerId)
         }
         val existing = versionOf(key)
+        if (!local && !remoteClockAllowed(version.logicalClock, existing, nowEpochMs)) return false
         if (existing != null && version <= existing) return false
+        // A bounded tombstone map cannot retain every removed key. Its evicted
+        // high-water mark rejects any delayed placement old enough to be one of
+        // those removals' predecessors, without retaining the key itself.
+        if (existing == null && evictedRemovalVersion?.let { version <= it } == true) return false
         // Roster cap: a peer never creates a NEW node beyond maxNodes — moves
         // / rewrites of already-placed keys still apply (see class doc, #2569).
         if (!local && key !in nodesByKey && nodesByKey.size >= maxNodes) return false
@@ -249,13 +277,22 @@ public constructor(
         return true
     }
 
-    private fun applyNodeRemoval(message: CollaborativeMessage.NodeRemoval): Boolean {
+    private fun applyNodeRemoval(
+        message: CollaborativeMessage.NodeRemoval,
+        local: Boolean,
+        nowEpochMs: Long,
+    ): Boolean {
         // A removal with no counter cannot be ordered against a placement.
         if (message.logicalClock <= 0L) return false
         val key = message.nodeKey
         val version = NodeVersion(message.logicalClock, message.peerId)
         val existing = versionOf(key)
+        if (!local && !remoteClockAllowed(version.logicalClock, existing, nowEpochMs)) return false
         if (existing != null && version <= existing) return false
+        // The key may have had a newer tombstone that was evicted from the
+        // bounded map. Do not let an older delayed removal recreate a weaker
+        // per-key tombstone and give a placement above it a resurrection path.
+        if (existing == null && evictedRemovalVersion?.let { version <= it } == true) return false
         val wasPlaced = nodesByKey.remove(key) != null
         liveVersions.remove(key)
         // Re-inserted, not updated in place: the map evicts in insertion
@@ -273,9 +310,28 @@ public constructor(
     private fun evictOldestTombstones() {
         val oldestFirst = tombstones.values.iterator()
         while (tombstones.size > maxNodes && oldestFirst.hasNext()) {
-            forgottenClock = maxOf(forgottenClock, oldestFirst.next().logicalClock)
+            val evictedVersion = oldestFirst.next()
+            forgottenClock = maxOf(forgottenClock, evictedVersion.logicalClock)
+            val watermark = evictedRemovalVersion
+            if (watermark == null || evictedVersion > watermark) {
+                evictedRemovalVersion = evictedVersion
+            }
             oldestFirst.remove()
         }
+    }
+
+    private fun remoteClockAllowed(
+        logicalClock: Long,
+        existing: NodeVersion?,
+        nowEpochMs: Long,
+    ): Boolean {
+        val baseline = maxOf(0L, nowEpochMs, existing?.logicalClock ?: 0L, forgottenClock)
+        val ceiling = if (baseline > Long.MAX_VALUE - MAX_REMOTE_COUNTER_AHEAD_MS) {
+            Long.MAX_VALUE
+        } else {
+            baseline + MAX_REMOTE_COUNTER_AHEAD_MS
+        }
+        return logicalClock <= ceiling
     }
 
     private fun versionOf(nodeKey: String): NodeVersion? =
