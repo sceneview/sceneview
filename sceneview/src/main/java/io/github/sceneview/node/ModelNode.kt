@@ -21,6 +21,9 @@ import io.github.sceneview.math.Size
 import io.github.sceneview.math.Transform
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.AnimationEnvelope
+import io.github.sceneview.model.animationClipReplaces
+import io.github.sceneview.model.animationEnvelope
 import io.github.sceneview.model.camerasEntities
 import io.github.sceneview.model.collisionShape
 import io.github.sceneview.model.emptyNodeEntities
@@ -338,6 +341,23 @@ open class ModelNode(
         }
 
     /**
+     * Estimates a skinned animation clip's occupied volume in model space.
+     *
+     * Results are cached per asset, clip and bounded [samples] count. Use [AnimationEnvelope.transformed]
+     * with this node's [worldTransform] before passing it to world-space camera framing.
+     */
+    fun animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope {
+        checkModelAlive("animationEnvelope")
+        return model.animationEnvelope(clip, samples)
+    }
+
+    /** Exact-name overload of [animationEnvelope]. Unknown names fall back to the rest-pose box. */
+    fun animationEnvelope(clip: String, samples: Int = 24): AnimationEnvelope {
+        checkModelAlive("animationEnvelope")
+        return model.animationEnvelope(clip, samples)
+    }
+
+    /**
      * The animations in flight, by animation index. Filled by [playAnimation], emptied by
      * [stopAnimation] and by a non-looping animation reaching its end; it can also be written
      * directly.
@@ -359,6 +379,20 @@ open class ModelNode(
             field = value.observedBy(this) { hasOwnFrameWork = true }
             if (value.isNotEmpty()) hasOwnFrameWork = true
         }
+
+    private val animationComposition = AnimationCompositionTracker()
+
+    /** Whether Filament has written a pose composed from multiple animation clips. */
+    internal val hasRetainedComposedPose: Boolean
+        get() = animationComposition.hasRetainedComposition
+
+    /** Clips whose non-overridden channels still contribute to Filament's retained pose. */
+    internal val retainedAnimationClips: List<Int>
+        get() = animationComposition.retainedClips
+
+    /** Last clip that wrote transforms retained by Filament, even after playback stops. */
+    internal val lastAppliedAnimationClip: Int?
+        get() = animationComposition.lastAppliedClip
 
     /**
      * Tracks renderable entities whose AABB was empty and had culling/shadows disabled.
@@ -785,6 +819,9 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
+                animationComposition.record(playingAnimations) { covering, covered ->
+                    model.animationClipReplaces(covering, covered)
+                }
                 applyAnimations(
                     animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
                 )
@@ -939,6 +976,32 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
+
+/** Tracks animation transforms that Filament retains after their clips leave playback. */
+internal class AnimationCompositionTracker {
+    private val appliedClips = linkedSetOf<Int>()
+
+    val hasRetainedComposition: Boolean
+        get() = appliedClips.size > 1
+    val retainedClips: List<Int>
+        get() = appliedClips.toList()
+    var lastAppliedClip: Int? = null
+        private set
+
+    fun record(
+        playing: Map<Int, ModelNode.PlayingAnimation>,
+        replaces: (covering: Int, covered: Int) -> Boolean = { _, _ -> false },
+    ) {
+        playing.forEach { (clip, animation) ->
+            if (animation.speed == 0f) return@forEach
+            appliedClips.removeAll { covered -> covered != clip && replaces(clip, covered) }
+            // Reinsert to mirror the current map's application order. Later clips have final say.
+            appliedClips.remove(clip)
+            appliedClips.add(clip)
+            lastAppliedClip = clip
+        }
+    }
 }
 
 /**

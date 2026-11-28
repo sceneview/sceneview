@@ -3,6 +3,9 @@ package io.github.sceneview.loaders
 import com.google.android.filament.Box
 import io.github.sceneview.model.AnimationEnvelope
 import io.github.sceneview.model.AnimationEnvelopes
+import io.github.sceneview.model.animationEnvelope
+import io.github.sceneview.model.model
+import io.github.sceneview.node.FilamentWithoutJni
 import io.github.sceneview.toAabb
 import org.json.JSONArray
 import org.json.JSONObject
@@ -89,6 +92,31 @@ class GltfAnimationEnvelopeTest {
         assertArrayEquals(floatArrayOf(13f, 0f, 0f), data.jointPositions(2, 1f)[1], 1e-5f)
     }
 
+    @Test fun `animated rigid renderable is included beside the skinned mesh`() {
+        val data = rig(animatedAccessory = true).animationData()!!
+        val clip = data.clipIndex("Accessory")
+
+        assertTrue(data.coversRenderables(listOf(clip)))
+        val lastPose = data.sample(clip, 3, rest)!!.poses.last().toAabb()
+        assertTrue("rigid accessory at x=2 must be framed", lastPose.max.x >= 2.25f - 1e-5f)
+    }
+
+    @Test fun `composed clips sample parent and child transforms together`() {
+        val data = rig(childTranslationClip = true).animationData()!!
+        val parent = data.clipIndex("Walk")
+        val child = data.clipIndex("Child")
+
+        val separateMax = maxOf(
+            data.sample(parent, 3, rest)!!.bounds.toAabb().max.x,
+            data.sample(child, 3, rest)!!.bounds.toAabb().max.x,
+        )
+        val composedMax = data.sampleComposed(listOf(parent, child), 3, rest)!!
+            .bounds.toAabb().max.x
+
+        assertTrue("composed parent and child translations must exceed separate clips",
+            composedMax > separateMax + 0.5f)
+    }
+
     @Test fun `missing or unreadable animation inputs fall back without throwing`() {
         assertNull(rig(edit = { it.remove("skins") }).animationData())
         assertNull(rig(edit = { it.remove("animations") }).animationData())
@@ -128,6 +156,24 @@ class GltfAnimationEnvelopeTest {
         } finally { results.shutdown() }
         for (n in 4..20) entry.envelope(0, n)
         assertNotSame(envelope, entry.envelope(0, 3)) // Evicted, recomputed.
+    }
+
+    @Test fun `multiple clips keep every sample and one rest pose`() {
+        val data = rig().animationData()!!
+        val clips = listOf(data.clipIndex("Walk"), data.clipIndex("Turn"))
+        val model = FilamentWithoutJni.modelInstance(FilamentWithoutJni.engine()).model
+        AnimationEnvelopes.record(model, data, rest)
+        try {
+            val envelope = model.animationEnvelope(clips, 24)
+            assertEquals(1 + 24 * clips.size, envelope.poses.size)
+            clips.forEach { clip ->
+                assertContains(envelope.bounds, model.animationEnvelope(clip, 24).bounds)
+            }
+            assertEquals(1, model.animationEnvelope(emptyList(), 24).poses.size)
+            assertEquals(1, model.animationEnvelope(listOf(-1, 999), 24).poses.size)
+        } finally {
+            AnimationEnvelopes.forget(model)
+        }
     }
 
     @Test fun `fox run and walk exceed the rest width and report retained cost when asset exists`() {
@@ -175,6 +221,7 @@ class GltfAnimationEnvelopeTest {
     private fun rig(
         interpolation: String = "LINEAR", negateRotation: Boolean = false,
         cubicRotation: Boolean = false, matrixParent: Boolean = false, singleKey: Boolean = false,
+        animatedAccessory: Boolean = false, childTranslationClip: Boolean = false,
         edit: (JSONObject) -> Unit = {},
     ): GltfLimits.Parsed {
         val bin = ByteBuffer.allocate(2048).order(ByteOrder.LITTLE_ENDIAN)
@@ -207,8 +254,8 @@ class GltfAnimationEnvelopeTest {
         repeat(12) { bin.putShort(0) }
         accessors.put(JSONObject().put("bufferView", views.length()-1).put("componentType", 5123)
             .put("type", "VEC4").put("count", 3))
-        fun clip(name: String, path: String, output: Int, mode: String) = JSONObject("""
-            {"name":"$name","channels":[{"sampler":0,"target":{"node":2,"path":"$path"}}],
+        fun clip(name: String, path: String, output: Int, mode: String, node: Int = 2) = JSONObject("""
+            {"name":"$name","channels":[{"sampler":0,"target":{"node":$node,"path":"$path"}}],
              "samplers":[{"input":$time,"output":$output,"interpolation":"$mode"}]}
         """)
         val json = JSONObject("""{
@@ -221,6 +268,16 @@ class GltfAnimationEnvelopeTest {
             .put("animations", JSONArray().put(clip("Walk", "translation", translation, interpolation))
                 .put(clip("Turn", "rotation", rotation, if (cubicRotation) "CUBICSPLINE" else "LINEAR"))
                 .put(clip("Grow", "scale", scale, "LINEAR")))
+        if (animatedAccessory) {
+            json.getJSONArray("nodes").put(JSONObject().put("mesh", 0))
+            json.getJSONArray("scenes").getJSONObject(0).getJSONArray("nodes").put(4)
+            json.getJSONArray("animations")
+                .put(clip("Accessory", "translation", translation, "LINEAR", node = 4))
+        }
+        if (childTranslationClip) {
+            json.getJSONArray("animations")
+                .put(clip("Child", "translation", translation, "LINEAR", node = 3))
+        }
         if (matrixParent) json.getJSONArray("nodes").getJSONObject(1)
             .put("matrix", JSONArray("[2,0,0,0,0,2,0,0,0,0,2,0,10,0,0,1]"))
         edit(json)

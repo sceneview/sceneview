@@ -16,13 +16,21 @@ internal class GltfAnimationData private constructor(
     private val nodes: List<Node>,
     private val order: IntArray,
     private val joints: IntArray,
+    private val coverageNodes: IntArray,
     private val clips: List<Clip>,
 ) {
     private class Node(
         val parent: Int, val translation: FloatArray, val rotation: FloatArray,
         val scale: FloatArray, val matrix: DoubleArray?,
     )
-    private class Clip(val name: String, val tracks: List<Track>, val duration: Float)
+    private class Clip(
+        val name: String,
+        val tracks: List<Track>,
+        val duration: Float,
+        val coverageComplete: Boolean,
+    ) {
+        val targets = tracks.mapTo(mutableSetOf()) { it.node to it.path }
+    }
     private class Track(
         val node: Int, val path: String, val interpolation: String,
         val times: FloatArray, val values: FloatArray,
@@ -71,28 +79,47 @@ internal class GltfAnimationData private constructor(
 
     fun clipIndex(name: String): Int = clips.indexOfFirst { it.name == name }
 
+    /** Whether every renderable-affecting channel is represented by the sampled node origins. */
+    internal fun coversRenderables(clips: Collection<Int>): Boolean = clips.all { clip ->
+        this.clips.getOrNull(clip)?.coverageComplete == true
+    }
+
+    /** Whether [covering] writes every transform channel written by [covered]. */
+    internal fun replaces(covering: Int, covered: Int): Boolean {
+        val next = clips.getOrNull(covering) ?: return false
+        val previous = clips.getOrNull(covered) ?: return false
+        return next.coverageComplete && previous.coverageComplete &&
+            previous.targets.isNotEmpty() && next.targets.containsAll(previous.targets)
+    }
+
     /** Exact retained primitive-array payload, excluding object headers, references and strings. */
     val retainedArrayBytes: Int
         get() {
             val arrays = clips.flatMap { it.tracks }.flatMap { listOf(it.times, it.values) }.toSet()
             return arrays.sumOf { it.size * 4 } + order.size * 4 + joints.size * 4 +
+                coverageNodes.size * 4 +
                 nodes.sumOf { (it.translation.size + it.rotation.size + it.scale.size) * 4 + (it.matrix?.size ?: 0) * 8 }
         }
 
     /** Joint origins for a particular clip/time, available to analytic JVM tests. */
     internal fun jointPositions(clip: Int, time: Float): List<FloatArray> =
-        positions(clips.getOrNull(clip), time)
+        positions(listOfNotNull(clips.getOrNull(clip)?.let { it to time }), joints)
 
-    private fun positions(clip: Clip?, time: Float): List<FloatArray> {
+    private fun positions(
+        animations: List<Pair<Clip, Float>>,
+        outputNodes: IntArray = coverageNodes,
+    ): List<FloatArray> {
         val translations = nodes.map { it.translation }.toTypedArray()
         val rotations = nodes.map { it.rotation }.toTypedArray()
         val scales = nodes.map { it.scale }.toTypedArray()
-        clip?.tracks?.forEach { track ->
-            val value = track.value(time)
-            when (track.path) {
-                "translation" -> translations[track.node] = value
-                "rotation" -> rotations[track.node] = value
-                "scale" -> scales[track.node] = value
+        animations.forEach { (clip, time) ->
+            clip.tracks.forEach { track ->
+                val value = track.value(time)
+                when (track.path) {
+                    "translation" -> translations[track.node] = value
+                    "rotation" -> rotations[track.node] = value
+                    "scale" -> scales[track.node] = value
+                }
             }
         }
         val world = arrayOfNulls<DoubleArray>(nodes.size)
@@ -101,21 +128,62 @@ internal class GltfAnimationData private constructor(
             val local = node.matrix ?: trs(translations[index], rotations[index], scales[index])
             world[index] = if (node.parent < 0) local else multiply(world[node.parent]!!, local)
         }
-        return joints.map { index -> FloatArray(3) { world[index]!![12 + it].toFloat() }.also { p ->
+        return outputNodes.map { index -> FloatArray(3) { world[index]!![12 + it].toFloat() }.also { p ->
             require(p.all { it.isFinite() })
         } }
     }
 
     fun sample(clip: Int, samples: Int, rest: Box): AnimationEnvelope? {
         val animation = clips.getOrNull(clip)?.takeIf { it.tracks.isNotEmpty() } ?: return null
-        val restJoints = extent(positions(null, 0f))
+        val count = samples.coerceIn(2, 120)
+        return envelope(
+            List(count) { sample ->
+                listOf(animation to animation.duration * sample / (count - 1))
+            },
+            rest,
+        )
+    }
+
+    /** Samples the pose produced by applying clips in order, including cross-clip transforms. */
+    fun sampleComposed(clips: Collection<Int>, samples: Int, rest: Box): AnimationEnvelope? {
+        val animations = clips.mapNotNull { this.clips.getOrNull(it) }
+            .filter { it.tracks.isNotEmpty() }
+        if (animations.isEmpty()) return null
+        val count = samples.coerceIn(2, 120)
+        val phases = linkedSetOf<List<Float>>()
+        phases += List(animations.size) { 0f }
+        phases += List(animations.size) { 1f }
+        // Retained clips can stop at a different phase from the clip that follows them. Include
+        // each endpoint independently before filling the remaining bounded sample budget.
+        animations.indices.forEach { varied ->
+            phases += List(animations.size) { if (it == varied) 1f else 0f }
+            phases += List(animations.size) { if (it == varied) 0f else 1f }
+        }
+        var sample = 1
+        while (phases.size < count) {
+            phases += List(animations.size) { clip ->
+                ((sample * (clip + 1)) % (count - 1)).toFloat() / (count - 1)
+            }
+            sample++
+        }
+        return envelope(
+            phases.take(count).map { phase ->
+                animations.mapIndexed { index, animation ->
+                    animation to animation.duration * phase[index]
+                }
+            },
+            rest,
+        )
+    }
+
+    private fun envelope(poses: List<List<Pair<Clip, Float>>>, rest: Box): AnimationEnvelope {
+        val restJoints = extent(positions(emptyList()))
         val center = rest.center
         val half = rest.halfExtent
         val lowMargin = FloatArray(3) { maxOf(0f, restJoints[it] - (center[it] - half[it])) }
         val highMargin = FloatArray(3) { maxOf(0f, center[it] + half[it] - restJoints[3 + it]) }
-        val count = samples.coerceIn(2, 120)
-        return AnimationEnvelope(listOf(rest) + List(count) { sample ->
-            val box = extent(positions(animation, animation.duration * sample / (count - 1)))
+        return AnimationEnvelope(listOf(rest) + poses.map { animations ->
+            val box = extent(positions(animations))
             for (axis in 0..2) { box[axis] -= lowMargin[axis]; box[axis + 3] += highMargin[axis] }
             Box(
                 (box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2,
@@ -132,8 +200,10 @@ internal class GltfAnimationData private constructor(
             val source = json.optJSONArray("nodes") ?: return null
             require(source.length() in 1..4096 && animations.length() <= 256)
             val joints = linkedSetOf<Int>()
+            val renderables = linkedSetOf<Int>()
             for (n in 0 until source.length()) {
                 val node = source.getJSONObject(n)
+                if (node.has("mesh")) renderables += n
                 if (!node.has("mesh") || !node.has("skin")) continue
                 val skinJoints = skins.getJSONObject(node.getInt("skin")).getJSONArray("joints")
                 for (j in 0 until skinJoints.length()) joints += skinJoints.getInt(j).also {
@@ -150,11 +220,35 @@ internal class GltfAnimationData private constructor(
                     parents[child] = n
                 }
             }
-            // Only joint ancestors can affect their origins. Parent-first order, without recursion.
+            val animatedTransforms = mutableSetOf<Int>()
+            for (a in 0 until animations.length()) {
+                val channels = animations.getJSONObject(a).getJSONArray("channels")
+                for (c in 0 until channels.length()) {
+                    val target = channels.getJSONObject(c).getJSONObject("target")
+                    val node = target.optInt("node", -1)
+                    if (node in parents.indices && target.optString("path") != "weights") {
+                        animatedTransforms += node
+                    }
+                }
+            }
+            val sampledRenderables = renderables.filterTo(linkedSetOf()) { renderable ->
+                val node = source.getJSONObject(renderable)
+                if (!node.has("skin")) return@filterTo true
+                var at = renderable
+                while (at >= 0 && at !in animatedTransforms) at = parents[at]
+                at >= 0
+            }
+            fun affectsSampledRenderable(target: Int): Boolean = sampledRenderables.any { renderable ->
+                var at = renderable
+                while (at >= 0 && at != target) at = parents[at]
+                at == target
+            }
+            // Joint and renderable ancestors can affect the sampled skeleton or rigid geometry.
+            // Keep them parent-first and without recursion.
             val order = linkedSetOf<Int>()
-            for (joint in joints) {
+            for (tracked in joints + sampledRenderables) {
                 val chain = mutableListOf<Int>()
-                var at = joint
+                var at = tracked
                 while (at >= 0 && at !in order) {
                     require(chain.size < source.length()) { "Cyclic glTF hierarchy" }
                     chain += at
@@ -198,6 +292,7 @@ internal class GltfAnimationData private constructor(
                 var duration = 0f
                 val tracks = mutableListOf<Track>()
                 val targets = mutableSetOf<Pair<Int, String>>()
+                var coverageComplete = true
                 for (c in 0 until channels.length()) {
                     val channel = channels.getJSONObject(c)
                     val target = channel.getJSONObject("target")
@@ -206,9 +301,19 @@ internal class GltfAnimationData private constructor(
                     require(times.isNotEmpty() && times.first() >= 0f)
                     require((1 until times.size).all { times[it] > times[it - 1] })
                     duration = maxOf(duration, times.last())
-                    val node = remap[target.optInt("node", -1)] ?: continue
+                    val sourceNode = target.optInt("node", -1)
                     val path = target.getString("path")
-                    if (path == "weights") continue // Morph displacement is outside the joint heuristic.
+                    if (path == "weights") {
+                        if (sourceNode in renderables) coverageComplete = false
+                        continue // Morph displacement is outside the origin heuristic.
+                    }
+                    // Translation carries the retained rest-space overhang with an origin. A
+                    // rigid rotation or scale changes that overhang itself, so keep the measured
+                    // corner pose in automatic framing instead of claiming full coverage.
+                    if (path != "translation" && affectsSampledRenderable(sourceNode)) {
+                        coverageComplete = false
+                    }
+                    val node = remap[sourceNode] ?: continue
                     require(path in listOf("translation", "rotation", "scale") && nodes[node].matrix == null)
                     require(targets.add(node to path))
                     val interpolation = sampler.optString("interpolation", "LINEAR")
@@ -218,9 +323,18 @@ internal class GltfAnimationData private constructor(
                     require(values.size == times.size * width * if (interpolation == "CUBICSPLINE") 3 else 1)
                     tracks += Track(node, path, interpolation, times, values)
                 }
-                Clip(animation.optString("name"), tracks, duration)
+                Clip(animation.optString("name"), tracks, duration, coverageComplete)
             }
-            return GltfAnimationData(nodes, IntArray(nodes.size) { it }, joints.map { remap.getValue(it) }.toIntArray(), clips)
+            val coverageNodes = (joints + sampledRenderables)
+                .map { remap.getValue(it) }
+                .toIntArray()
+            return GltfAnimationData(
+                nodes,
+                IntArray(nodes.size) { it },
+                joints.map { remap.getValue(it) }.toIntArray(),
+                coverageNodes,
+                clips,
+            )
         }
 
         private fun JSONObject.vector(key: String, default: FloatArray): FloatArray {

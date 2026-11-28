@@ -143,7 +143,7 @@ fun Scene(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
-    fitMode: FitMode = FitMode.Corners,
+    fitMode: FitMode? = null,
     animationEnvelope: AnimationEnvelope? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     clipToContentPadding: Boolean = false,

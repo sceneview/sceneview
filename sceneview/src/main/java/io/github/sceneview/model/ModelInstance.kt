@@ -8,6 +8,7 @@ import com.google.android.filament.gltfio.FilamentInstance
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.node.Node
+import io.github.sceneview.model.animationEnvelope as modelAnimationEnvelope
 
 typealias ModelInstance = FilamentInstance
 
@@ -21,6 +22,21 @@ val ModelInstance.engine get() = model.engine
 val ModelInstance.isDestroyed: Boolean get() = model.isDestroyed
 val ModelInstance.renderableManager get() = engine.renderableManager
 val ModelInstance.lightManager get() = engine.lightManager
+
+/**
+ * Estimates a skinned animation clip's occupied volume as separate sampled pose boxes.
+ *
+ * Results are cached per asset, clip and bounded [samples] count. Unsupported animation data,
+ * static models and instances not loaded by `ModelLoader` fall back to the rest-pose box.
+ *
+ * @see Model.animationEnvelope
+ */
+fun ModelInstance.animationEnvelope(clip: Int = 0, samples: Int = 24): AnimationEnvelope =
+    model.modelAnimationEnvelope(clip, samples)
+
+/** Exact-name overload of [animationEnvelope]. Unknown names fall back to the rest-pose box. */
+fun ModelInstance.animationEnvelope(clip: String, samples: Int = 24): AnimationEnvelope =
+    model.modelAnimationEnvelope(clip, samples)
 
 val ModelInstance.renderableEntities: List<Entity>
     get() = entities.filter {

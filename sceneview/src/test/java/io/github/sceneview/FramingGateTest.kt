@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -516,5 +517,45 @@ class FramingGateTest {
         assertFalse(gate.rearmOnChange(null))
         assertFalse(gate.rearmOnChange(null))
         assertTrue(gate.rearmOnChange(ViewportPadding.Zero))
+    }
+
+    @Test
+    fun movingContentWithoutAutoCenterDoesNotRearmPastTheCeiling() {
+        val gate = FramingGate()
+        repeat(FramingGate.MAX_FRAMING_PASSES * 10) { frame ->
+            val movedRootPosition = Position(frame.toFloat(), 0f, 0f)
+            val key = autoFitFramingKey(
+                ViewportPadding.Zero, null, null,
+                tracksAutomaticCenter = false,
+                contentPosition = movedRootPosition,
+                playback = emptyList(),
+            )
+            gate.rearmOnChange(key)
+            if (gate.shouldRun(hasContent = true)) {
+                gate.recordFraming(1f + movedRootPosition.x)
+            }
+        }
+
+        assertTrue("root movement must still latch at the hard ceiling", gate.latched)
+    }
+
+    @Test
+    fun playbackChangesRearmWithoutPuttingSampledEnvelopesInTheKey() {
+        val gate = FramingGate()
+        val model = System.identityHashCode(Any())
+        val resting = AutoFitFramingKey(
+            ViewportPadding.Zero, null, null, null,
+            listOf(AutoFramingPlayback(model, emptyList()))
+        )
+        val playing = resting.copy(
+            playback = listOf(AutoFramingPlayback(model, clips = listOf(1)))
+        )
+        assertFalse(gate.rearmOnChange(resting))
+        gate.settleAt(2f)
+
+        assertTrue("selecting another clip must re-arm automatic framing", gate.rearmOnChange(playing))
+        assertFalse(gate.latched)
+        assertFalse("unchanged playback must not re-arm again", gate.rearmOnChange(playing))
+        assertTrue("stopping the clip must re-arm too", gate.rearmOnChange(resting))
     }
 }
