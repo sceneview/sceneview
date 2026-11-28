@@ -489,7 +489,7 @@ class ARReplayHarnessTest {
         )
 
         /**
-         * Placement demos (`FeaturePlacementScene` places the model on the first good plane, no
+         * Placement demos (`AutoPlacementScene` places the model on the first good plane, no
          * tap needed) are graded on plane, anchor and model; plane demos on the plane; the rest
          * on frames and brightness. Metrics are recorded for every demo either way, so a demo
          * can be promoted here once its numbers are known.

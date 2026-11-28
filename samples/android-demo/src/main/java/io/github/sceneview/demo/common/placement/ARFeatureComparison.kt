@@ -246,10 +246,13 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 }
             }
         } else {
-            FeaturePlacementScene(
+            AutoPlacementScene(
                 assetReady = model != null && supported,
+                // This screen draws the coaching below, with its own cue rules.
+                coaching = false,
                 state = state, engine = engine, modelLoader = modelLoader, materialLoader = materialLoader,
                 modifier = Modifier.fillMaxSize(), cameraStream = stream, playbackDataset = playback,
+                lifecycle = rememberHostLifecycle(),
                 sessionConfiguration = { active, config ->
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                     if (feature.isSupported(active)) {
@@ -296,13 +299,13 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                 // helmet's soft contact shadow grounds it; the occlusion's ground contact keeps
                 // that one whole.
                 groundShadows = false,
-            ) { placement ->
-                placement?.let { result -> model?.let { instance ->
+            ) { result ->
+                model?.let { instance ->
                     AutoPlacementModel(result, state, instance,
                         scaleToUnits = HELMET_PREVIEW_SIZE_METRES,
                         assetRotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
                         onInvalidMove = { invalidMove = it })
-                } }
+                }
             }
             // Silent while a card explains that AR could not start (#3986).
             ARCoachingOverlay(

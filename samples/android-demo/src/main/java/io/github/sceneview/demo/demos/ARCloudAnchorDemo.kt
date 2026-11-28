@@ -5,8 +5,10 @@ import io.github.sceneview.demo.telemetry.logModelLoadFailed
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
@@ -34,7 +36,6 @@ import com.google.ar.core.ResolveCloudAnchorFuture
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
-import io.github.sceneview.ar.ARCoreAvailabilityOverlay
 import com.google.android.filament.Engine
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.PlacementPhase
@@ -49,8 +50,9 @@ import io.github.sceneview.demo.common.placement.extentScaledTo
 import io.github.sceneview.ar.AutoPlacementResult
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
+import io.github.sceneview.ar.AutoPlacementScene
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.rememberAutoPlacementState
-import io.github.sceneview.demo.common.placement.FeaturePlacementScene
 import io.github.sceneview.demo.demos.internal.CloudAnchorSessionState
 import io.github.sceneview.demo.demos.internal.onFailure
 import io.github.sceneview.math.Position
@@ -68,6 +70,7 @@ import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.ForceCloudAnchorScenarioMenu
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedCloudAnchorScenario
+import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
@@ -553,9 +556,12 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            FeaturePlacementScene(
+            AutoPlacementScene(
                 assetReady = modelInstance != null && liveState.allows(CloudAnchorAction.PlaceAnchor),
+                // The status banner and cards above coach this flow.
+                coaching = false,
                 state = placementState,
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -577,7 +583,6 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     }
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
-                arCoreAvailabilityOverlay = if (forcedScenario != null) null else { { ARCoreAvailabilityOverlay(it) } },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -601,14 +606,11 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                     }
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
-            ) { placement ->
-                modelInstance?.let { instance ->
-                    if (placement != null && resolvedAnchor == null) {
-                        AutoPlacementModel(placement, placementState, instance,
-                            scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
-                            onInvalidMove = { invalidMove = it })
-                    }
-                    resolvedAnchor?.let { anchor ->
+                // A resolved anchor shows whether or not this device placed one itself.
+                sceneContent = {
+                    val anchor = resolvedAnchor
+                    val instance = modelInstance
+                    if (anchor != null && instance != null) {
                         AnchorNode(anchor = anchor) {
                             ModelNode(modelInstance = instance,
                                 scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
@@ -616,15 +618,29 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                                 isVisible = isTracking)
                         }
                     }
+                },
+            ) { placement ->
+                val instance = modelInstance
+                if (instance != null && resolvedAnchor == null) {
+                    AutoPlacementModel(placement, placementState, instance,
+                        scaleToUnits = ANCHOR_MODEL_SIZE_METRES,
+                        onInvalidMove = { invalidMove = it })
                 }
             }
 
-            // Cover the still-black AR viewport until the first camera frame (#2484);
-            // reads the ARCore verdict so it never covers the SDK's own card (#3341).
-            ARCameraInitScrim(
-                initializing = !cameraReady,
-                arCoreAvailability = arCoreAvailability,
-            )
+            if (forcedScenario != null) {
+                // A pinned QA state (#3421) shows its flow over a fixed room. The scene stays
+                // composed underneath, so clearing the pin returns to a live, armed placement.
+                Box(Modifier.fillMaxSize().background(Color.Black))
+                QaCameraBackdrop(seed = "ar-cloud-anchor")
+            } else {
+                // Cover the still-black AR viewport until the first camera frame (#2484);
+                // reads the ARCore verdict so it never covers the SDK's own card (#3341).
+                ARCameraInitScrim(
+                    initializing = !cameraReady,
+                    arCoreAvailability = arCoreAvailability,
+                )
+            }
         }
     }
     if (show3D) {
