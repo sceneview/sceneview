@@ -114,7 +114,7 @@ Every page below is also served as Markdown: replace the trailing `/` with `.md`
 - [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
 - [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
 - [Which 3D & AR library](https://sceneview.github.io/docs/3d-ar-library/): the dependency and a minimal working example per platform — Compose, Views, Compose Multiplatform, SwiftUI, web
-- [Sceneform replacement](https://sceneview.github.io/docs/sceneform-replacement/): moving from Sceneform, class by class, and from SceneView 2.x code
+- [Sceneform replacement](https://sceneview.github.io/docs/sceneform-replacement/): moving from Sceneform, class by class, Google Play's 16 KB deadline (February 1, 2027), and SceneView 2.x code
 - [Migration guide](https://sceneview.github.io/docs/migration/): every breaking change between SceneView versions
 - [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
 - [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
