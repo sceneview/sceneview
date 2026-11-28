@@ -12,6 +12,7 @@ import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.demos.internal.AdaptiveConfidence
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
+import io.github.sceneview.demo.demos.internal.ScanSaveStep
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
@@ -26,6 +27,8 @@ import io.github.sceneview.demo.demos.internal.DepthIntake.Outcome
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.KeyframeGate
 import io.github.sceneview.demo.demos.internal.MediaSpan
+import io.github.sceneview.demo.demos.internal.PoseStep
+import io.github.sceneview.demo.demos.internal.RecordedDepthFrame
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
@@ -36,6 +39,9 @@ import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
 import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanCutoff
+import io.github.sceneview.demo.demos.internal.ScanDepthHeader
+import io.github.sceneview.demo.demos.internal.ScanDepthRecorder
+import io.github.sceneview.demo.demos.internal.ScanDepthRecording
 import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
 import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.ScanPreset
@@ -52,6 +58,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
@@ -76,6 +83,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * raw-depth image is also back-projected and fused into a 2 cm surfel map ([DenseFusion]), which
  * [finish] saves as the scan's dense cloud. Without it the scan is the sparse v1 one.
  *
+ * With a [depthDir] too, every depth frame handed to the fusion — and every one the pose guard held
+ * back ([holdDepth]) — is recorded to a temp file there ([ScanDepthRecorder]), which the saved
+ * session keeps as `capture-depth.bin`: the fusion replays from it off the phone ([ScanDepthReplay]).
+ *
  * Main thread, like the recorder, except the photo encoding and the depth fusion it launches in
  * [scope].
  */
@@ -92,6 +103,8 @@ internal class ScanCapture(
     /** What is scanned decides the photo spacing, the depth kept and the model's voxel (#4647). */
     val preset: ScanPreset = ScanPreset.ROOM,
     private val budget: ScanMemoryBudget = ScanMemoryBudget(Runtime.getRuntime().maxMemory()),
+    /** Where the raw depth is recorded while the scan runs; `null` records none. */
+    depthDir: File? = null,
 ) : AutoCloseable {
     /** The scan's trace; its journal is what [finish] saves. */
     val trace = ArDebugTrace(
@@ -155,6 +168,26 @@ internal class ScanCapture(
     // The dense frame count at each DepthStats timestamp. Keyed by time so journal decimation
     // cannot shift the saved cloud's reveal counts onto different events.
     private val recordedFrames = HashMap<Long, Int>()
+
+    // The raw depth as fused (and as held back by the pose guard), streamed to a temp file.
+    private val depthRecorder = dense?.fusion?.let { fusion ->
+        depthDir ?: return@let null
+        runCatching {
+            ScanDepthRecorder(
+                File(depthDir, "depth-${SystemClock.elapsedRealtimeNanos()}.bin"),
+                ScanDepthHeader(fusion.maxPoints, fusion.maxLevel, preset.farM, fusion.voxelM),
+            )
+        }.getOrNull()
+    }
+    private var depthRecording: ScanDepthRecording? = null
+
+    // The photo the latest frame took, so the depth fused on that frame names it.
+    private var photoNanos = Long.MIN_VALUE
+    private var photoPath: String? = null
+
+    // Depth recorded while the pose guard holds the scan: its own pace, never the fusion's gates.
+    private val heldGate = IntervalGate(DEPTH_INTERVAL_NS)
+    private var heldDepthNanos = Long.MIN_VALUE
 
     // Why depth frames did or did not grow the map, logged every two seconds for a device run.
     private val intake = DepthIntake()
@@ -263,6 +296,8 @@ internal class ScanCapture(
         gate.accept(display)
         poses[path] = display
         trace.addImage(nanos, path)
+        photoNanos = nanos
+        photoPath = path
         inFlight.incrementAndGet()
         jobs += scope.launch(Dispatchers.Default) {
             try {
@@ -392,9 +427,10 @@ internal class ScanCapture(
      * Fuses [depth] into the dense map, coloured from [image] (the same frame's camera image):
      * the depth, its confidence and one colour per kept pixel are copied here, on the main thread,
      * then back-projected and merged on [Dispatchers.Default]. Without an [image] this frame, the
-     * depth is let go, and counted as such.
+     * depth is let go, and counted as such. [display] and [step] are the frame's display pose and
+     * what the pose guard made of it: the depth recording keeps them.
      */
-    fun fuseDepth(depth: ScanDepth, image: ScanImage?) {
+    fun fuseDepth(depth: ScanDepth, image: ScanImage?, display: DebugPose, step: PoseStep = PoseStep.Continuous) {
         if (closed.get()) return
         val dense = dense ?: return
         if (image == null) {
@@ -402,7 +438,8 @@ internal class ScanCapture(
             frameCounters.unavailableDepth()
             return
         }
-        val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv, dense.confidence.threshold.toInt())
+        val threshold = dense.confidence.threshold.toInt()
+        val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv, threshold)
         if (frame == null) {
             intake.count(Outcome.Unreadable)
             frameCounters.unavailableDepth()
@@ -411,14 +448,18 @@ internal class ScanCapture(
         frameCounters.acceptDepth()
         model?.offer(frame, scope)
         // The floor the live map's "to redo" cells are judged from: ARCore's, stable as the phone moves.
-        dense.floorPlaneY = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
+        val floor = ArDebugGeometry.floorPlaneHeight(trace.lastPlanes())
+        dense.floorPlaneY = floor
+        depthRecorder?.record(
+            RecordedDepthFrame(
+                depth.nanos, depth.depthNanos, step, threshold, frame, display, floor,
+                photoPath.takeIf { photoNanos == depth.nanos },
+            ),
+        )
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
-                val (samples, stats) = denseGate.withLock {
-                    val samples = dense.project(frame, depth.nanos, farM = preset.farM)
-                    samples to dense.add(samples)
-                }
+                val (samples, stats) = denseGate.withLock { dense.fuse(frame, depth.nanos, farM = preset.farM) }
                 intake.count(
                     when {
                         samples.count == 0 -> Outcome.NoSamples
@@ -430,6 +471,50 @@ internal class ScanCapture(
                 denseKept.addAndGet(stats.kept)
             } finally {
                 fusing.set(false)
+            }
+        }
+    }
+
+    /** Lets the raw depth recording go: a scan dropped unsaved keeps none. Never blocks. */
+    fun discardDepth() {
+        depthRecorder?.discard()
+    }
+
+    /**
+     * Notes a frame the pose guard did not read as continuous, its [display] pose and [step]: with
+     * the log's camera poses, every pose the guard was handed, so it replays off the phone.
+     */
+    fun notePoseStep(nanos: Long, display: DebugPose, step: PoseStep) {
+        depthRecorder?.noteGuard(nanos, display, step)
+    }
+
+    /**
+     * Records the raw depth of [frame], which the pose guard holds back ([step]): never fused, only
+     * kept flagged as such, so a replay can judge the guard itself. At most every
+     * [DEPTH_INTERVAL_NS], one per new depth estimate, and only while the depth is recorded.
+     */
+    fun holdDepth(frame: Frame, display: DebugPose, step: PoseStep) {
+        val dense = dense ?: return
+        val recorder = depthRecorder ?: return
+        if (!heldGate.isDue(frame.timestamp)) return
+        val image16 = runCatching { frame.acquireRawDepthImage16Bits() }.getOrNull() ?: return
+        if (image16.timestamp == heldDepthNanos) {
+            image16.close()
+            return
+        }
+        heldGate.mark(frame.timestamp)
+        heldDepthNanos = image16.timestamp
+        val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
+        ScanDepth(image16, confidence, frame.camera.pose.toScanPose(), frame.timestamp).use { depth ->
+            val image = acquire(frame) ?: return
+            image.use {
+                val threshold = dense.confidence.threshold.toInt()
+                val copied = depth.copy(textureIntrinsics, intrinsics, it.yuv, threshold) ?: return
+                recorder.record(
+                    RecordedDepthFrame(
+                        depth.nanos, depth.depthNanos, step, threshold, copied, display, dense.floorPlaneY, null,
+                    ),
+                )
             }
         }
     }
@@ -474,8 +559,14 @@ internal class ScanCapture(
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
-    suspend fun finish(): RerunCapturePack? {
+    suspend fun finish(
+        onStep: (ScanSaveStep) -> Unit = {},
+        // false skips painting only if the saved cloud can provide the dense result.
+        bakePlanes: Boolean = true,
+        onPlaneBaking: (Boolean) -> Unit = {},
+    ): RerunCapturePack? {
         if (closed.get()) return null
+        onStep(ScanSaveStep.Finishing)
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
         dense?.closeForSave()
@@ -507,6 +598,20 @@ internal class ScanCapture(
             val pose = poses[image.path] ?: return@mapNotNull null
             ScanPhoto(image.path, jpeg, pose)
         }
+        // The raw depth recorded: its writer drained and its file closed, off the main thread.
+        val depth = depthRecording ?: depthRecorder?.let { recorder ->
+            withContext(Dispatchers.IO) { recorder.finish() }.also { recording ->
+                depthRecording = recording
+                runCatching {
+                    Log.i(
+                        LOG_TAG,
+                        "depth recorded: ${recording?.entries?.size ?: 0} frames, ${recording?.bytes ?: 0} bytes, " +
+                            "${recording?.dropped ?: 0} dropped${recorder.lastError?.let { ", stopped: $it" }.orEmpty()}",
+                    )
+                }
+            }
+        }
+        onStep(ScanSaveStep.Fusing)
         val started = System.nanoTime()
         val map = dense
         val cloud = map?.takeIf { it.fusion.count > 0 }
@@ -530,8 +635,15 @@ internal class ScanCapture(
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
-        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera,
-            bakePlanes = cloud == null)
+        // Dense results texture their mesh from the original photos: plane baking is only needed
+        // for the sparse replay (main), and a caller can skip it outright.
+        val paints = bakePlanes && cloud == null
+        onPlaneBaking(paints)
+        onStep(ScanSaveStep.Building)
+        return RerunCaptureBuilder.build(
+            timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera, bakePlanes = paints,
+            depth = depth,
+        )
             .also { model?.keepFor(it) }
     }
 
@@ -566,6 +678,8 @@ internal class ScanCapture(
         if (!closed.compareAndSet(false, true)) return
         val started = System.nanoTime()
         logMemory("exit-before-release")
+        // A recording never finished (exit, source replacement) goes with the scan; a saved one stays.
+        depthRecorder?.discard()
         val denseMap = dense
         val pendingLiveJob = denseMap?.close()
         val depthJob = fuseJob
@@ -620,6 +734,7 @@ internal class ScanCapture(
             modelOwner: RerunLiveModels.Owner,
             rawDepth: Boolean = false,
             preset: ScanPreset = ScanPreset.ROOM,
+            depthDir: File? = null,
         ): ScanCapture? {
             val camera = frame.camera
             val intrinsics = camera.imageIntrinsics.toScan() ?: return null
@@ -628,7 +743,10 @@ internal class ScanCapture(
                 camera.pose.toScanPose(),
                 camera.displayOrientedPose.toScanPose(),
             )
-            return ScanCapture(intrinsics, camera.textureIntrinsics.toScan(), lens, scope, modelOwner, rawDepth, preset)
+            return ScanCapture(
+                intrinsics, camera.textureIntrinsics.toScan(), lens, scope, modelOwner, rawDepth, preset,
+                depthDir = depthDir,
+            )
         }
 
         /** 100 ms between two fused depth keyframes. */
@@ -695,6 +813,9 @@ internal class ScanDepth(
     /** The frame's timestamp: the clock [AdaptiveConfidence] waits on. */
     val nanos: Long,
 ) : AutoCloseable {
+    /** The depth image's own timestamp: the estimate it is. */
+    val depthNanos: Long get() = depth.timestamp
+
     /**
      * The depth copied out of ARCore's buffers, its lens the one of the image it is aligned with
      * ([DepthAlignment.depthLens]: the GPU [texture]'s, scaled to it), each pixel coloured from
@@ -797,3 +918,7 @@ private fun CameraIntrinsics.toScan(): ScanIntrinsics? {
 }
 
 private fun Pose.toScanPose() = DebugPose(tx(), ty(), tz(), qx(), qy(), qz(), qw())
+
+/** A sparse capture opens on replay and still needs its photographed planes. */
+internal fun shouldBakeScanPlanes(liveRoom: Boolean, hasDenseGeometry: Boolean): Boolean =
+    !liveRoom || !hasDenseGeometry

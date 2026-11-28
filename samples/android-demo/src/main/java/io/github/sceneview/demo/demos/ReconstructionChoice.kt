@@ -55,6 +55,46 @@ internal fun objectReconstruction(source: RerunModelSource, aims: List<ScanSubje
 }
 
 /**
+ * Whether the scan shown ([shownId]) has its data: `false` only while its own files are being read
+ * ([readingId], the stored scan an opening reads). An opening let go half-way, then another scan
+ * shown, holds that scan back from nothing.
+ */
+internal fun captureLoaded(readingId: String?, shownId: String?): Boolean = readingId == null || readingId != shownId
+
+/**
+ * What an [ScanScope.Object] scan's result is decided on, read once per scan and its data: the box
+ * it went round ([subject], [ScanSubject]) and whether it is filled ([filled], as
+ * [objectReconstruction] would say, #5114) — off its [source] while the scan still has one, else
+ * its saved surfels and the trace's aims, which is all a reopen has.
+ */
+internal class ObjectResultInputs(val filled: Boolean, val subject: ScanBox?) {
+    companion object {
+        /** Not an object, or one with nothing to judge it from: never filled, no box. */
+        val NONE = ObjectResultInputs(filled = false, subject = null)
+
+        /**
+         * [scope]'s inputs; `null` while an object's saved data are still being read ([loaded]
+         * false): nothing is to be fused or kept for it on a guess meanwhile.
+         */
+        fun of(
+            scope: ScanScope,
+            source: RerunModelSource?,
+            surfels: DenseCloud?,
+            aims: List<ScanSubject.Aim>?,
+            voxelM: Float?,
+            loaded: Boolean,
+        ): ObjectResultInputs? {
+            if (scope != ScanScope.Object) return NONE
+            if (!loaded) return null
+            if (aims.isNullOrEmpty()) return NONE
+            val cloud = source?.usable()?.let(::reconstructionCloud) ?: surfels?.takeIf { it.count > 0 } ?: return NONE
+            val subject = runCatching { ScanSubject.of(cloud, voxelM ?: DenseFusion.VOXEL_M, aims) }.getOrNull()
+            return ObjectResultInputs(fillsObject(subject), subject)
+        }
+    }
+}
+
+/**
  * Whether a kept model an earlier finish pipeline built ([RerunScanModel.stalePipeline]) is built
  * again from its reopened scan, [source]: only where this pipeline finishes it differently — an
  * object filled now ([objectReconstruction], pipeline 9). Anywhere else a rebuild could only

@@ -3,12 +3,15 @@ package io.github.sceneview.demo.demos.internal
 import io.github.sceneview.demo.demos.FILLED_OBJECT_M
 import io.github.sceneview.demo.demos.RerunModelSource
 import io.github.sceneview.demo.demos.fillsObject
+import io.github.sceneview.demo.demos.ObjectResultInputs
+import io.github.sceneview.demo.demos.captureLoaded
 import io.github.sceneview.demo.demos.objectReconstruction
 import io.github.sceneview.demo.demos.rebuildsStale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.PI
@@ -226,6 +229,47 @@ class ScanSubjectTest {
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), round(-1f, -1f, 0f, radius = 0.5f), VOXEL))
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), null, VOXEL))
         assertEquals(ReconstructionMethod.Fused, objectReconstruction(RerunModelSource.Surfels(cloud), emptyList(), VOXEL))
+    }
+
+    @Test
+    fun `a reopened object waits for its saved data, then is judged from them`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        // Reopened, the result is shown before the scan's files are read: no verdict on a guess.
+        assertNull(ObjectResultInputs.of(ScanScope.Object, null, null, null, VOXEL, loaded = false))
+        // Then its saved cloud and the trace's aims arrive: filled, with its box.
+        val read = checkNotNull(ObjectResultInputs.of(ScanScope.Object, null, cloud, crate, VOXEL, loaded = true))
+        assertTrue(read.filled)
+        assertNotNull(read.subject)
+        // The same from the scan's own source, the scan just finished.
+        assertTrue(checkNotNull(ObjectResultInputs.of(ScanScope.Object, RerunModelSource.Surfels(cloud), null, crate, VOXEL, loaded = true)).filled)
+        val shoes = Drawn().apply {
+            floor()
+            block(CRATE_X, CRATE_Z, SHOES_LENGTH, SHOES_WIDTH, SHOES_HEIGHT)
+        }.cloud()
+        val aroundShoes = round(CRATE_X, CRATE_Z, SHOES_HEIGHT / 2, radius = 0.25f, eyeM = 0.4f)
+        val small = checkNotNull(ObjectResultInputs.of(ScanScope.Object, null, shoes, aroundShoes, VOXEL, loaded = true))
+        assertFalse("shoes are not filled", small.filled)
+        assertNotNull("but boxed, for their crop", small.subject)
+        // Read and found to hold nothing: not filled, nothing to crop to.
+        assertSame(ObjectResultInputs.NONE, ObjectResultInputs.of(ScanScope.Object, null, null, crate, VOXEL, loaded = true))
+        // Not an object: decided at once, whatever is loaded.
+        assertSame(ObjectResultInputs.NONE, ObjectResultInputs.of(ScanScope.Room, null, null, null, VOXEL, loaded = false))
+    }
+
+    @Test
+    fun `an opening let go half-way holds no later scan back`() {
+        val crate = round(CRATE_X, CRATE_Z, HEIGHT / 2)
+        // A stored scan is opened: its files are read, its result waits.
+        assertFalse(captureLoaded(readingId = "stored", shownId = "stored"))
+        assertNull(ObjectResultInputs.of(ScanScope.Object, null, null, crate, VOXEL, captureLoaded("stored", "stored")))
+        // Back, before they were read: the flag stays on that scan. A live scan is shown next —
+        // its own data in hand, saved or not yet — and is decided at once.
+        for (live in listOf("live", null)) {
+            assertTrue(captureLoaded(readingId = "stored", shownId = live))
+            val inputs = checkNotNull(ObjectResultInputs.of(ScanScope.Object, RerunModelSource.Surfels(cloud), cloud, crate, VOXEL, captureLoaded("stored", live)))
+            assertTrue(inputs.filled)
+        }
+        assertTrue(captureLoaded(readingId = null, shownId = "stored"))
     }
 
     @Test
