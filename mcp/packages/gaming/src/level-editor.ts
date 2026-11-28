@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Level editor code generator ──────────────────────────────────────────────
 
 export type LevelTheme =
@@ -90,15 +92,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.SphereNode
-import io.github.sceneview.node.CylinderNode
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 
@@ -291,15 +288,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.SphereNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 
 /**
  * AR Level Editor — ${options.theme} theme.
@@ -313,7 +311,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -324,6 +322,7 @@ fun ${composableName}AR() {
     val materialLoader = rememberMaterialLoader(engine)
 
     var selectedGeometry by remember { mutableStateOf("cube") }
+    val placedBlocks = remember { mutableStateListOf<Pair<Anchor, String>>() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -335,14 +334,25 @@ fun ${composableName}AR() {
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
-                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        val anchor = hitResult.createAnchor()
-                        // Place selected geometry at tap location
-                    }
+                    latestFrame?.hitTest(e)?.firstOrNull()
+                        ?.createAnchorOrNull()
+                        ?.let { anchor ->
+                            placedBlocks += anchor to selectedGeometry
+                        }
                 }
             )
         ) {
-            // AR placed blocks rendered here
+            placedBlocks.forEach { (anchor, geometry) ->
+                key(anchor) {
+                    AnchorNode(anchor = anchor) {
+                        when (geometry) {
+                            "sphere" -> SphereNode(radius = 0.1f)
+                            "cylinder" -> CylinderNode(radius = 0.1f, height = 0.2f)
+                            else -> CubeNode(size = Size(0.2f, 0.2f, 0.2f))
+                        }
+                    }
+                }
+            }
         }
 
         // Geometry selector

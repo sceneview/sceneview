@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Physics game code generator ──────────────────────────────────────────────
 
 export type PhysicsPreset =
@@ -77,14 +79,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.SphereNode
-import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import kotlin.math.sqrt
@@ -384,10 +382,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.SphereNode
-import io.github.sceneview.node.CubeNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -406,7 +404,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -416,7 +414,7 @@ fun ${composableName}AR() {
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val materialLoader = rememberMaterialLoader(engine)
 
-    var spawnCount by remember { mutableIntStateOf(0) }
+    val spawnedAnchors = remember { mutableStateListOf<Anchor>() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -428,14 +426,19 @@ fun ${composableName}AR() {
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
-                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        val anchor = hitResult.createAnchor()
-                        spawnCount++
-                    }
+                    latestFrame?.hitTest(e)?.firstOrNull()
+                        ?.createAnchorOrNull()
+                        ?.let(spawnedAnchors::add)
                 }
             )
         ) {
-            // Physics objects rendered here
+            spawnedAnchors.forEach { anchor ->
+                key(anchor) {
+                    AnchorNode(anchor = anchor) {
+                        SphereNode(radius = 0.1f)
+                    }
+                }
+            }
         }
 
         Surface(
@@ -446,7 +449,7 @@ fun ${composableName}AR() {
                 .padding(24.dp)
         ) {
             Text(
-                text = "Tap surfaces to spawn physics objects (spawned: \$spawnCount)",
+                text = "Tap surfaces to spawn physics objects (spawned: \${spawnedAnchors.size})",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium
             )

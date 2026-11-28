@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
@@ -273,8 +274,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -320,8 +321,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -366,8 +367,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -412,8 +413,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,
@@ -459,8 +460,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             `**Gradle dependency:**`,
                             "```kotlin",
                             args.ar
-                                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
                             "```",
                             ``,
                             `**Kotlin (Jetpack Compose):**`,

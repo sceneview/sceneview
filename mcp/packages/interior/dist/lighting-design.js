@@ -1,4 +1,4 @@
-// ─── Interior lighting design code generator ──────────────────────────────────
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 export const LIGHT_TYPES = [
     "ambient", "spot", "accent", "pendant", "recessed", "track",
     "sconce", "floor-lamp", "table-lamp", "chandelier", "strip-led", "natural",
@@ -36,12 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.restPoseBoundingBox
 import kotlin.math.PI
@@ -55,7 +53,7 @@ import kotlin.math.PI
  *
  * Model: src/main/assets/${roomModel}
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.69.4")
+ * Gradle: implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -226,6 +224,7 @@ import com.google.android.filament.LightManager
 import com.google.ar.core.Frame
 import com.google.ar.core.Anchor
 import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
@@ -247,7 +246,7 @@ import kotlin.math.PI
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.69.4")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -272,6 +271,7 @@ fun ${composableName}AR() {
                         anchor = latestFrame?.hitTest(e)?.firstOrNull { hit ->
                             val plane = hit.trackable as? Plane
                             plane?.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                                plane.trackingState == TrackingState.TRACKING &&
                                 plane.isPoseInPolygon(hit.hitPose)
                         }?.createAnchorOrNull()
                     }

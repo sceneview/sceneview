@@ -47,10 +47,13 @@
     "node": ">=18"
   },
   "scripts": {
+    "sync-version": "node ../shared/generate-sceneview-version.mjs gaming",
+    "prebuild": "npm run sync-version",
     "build": "tsc",
-    "prepare": "tsc",
+    "prepare": "npm run sync-version && tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "pretest": "npm run sync-version",
     "test": "vitest run"
   },
   "dependencies": {

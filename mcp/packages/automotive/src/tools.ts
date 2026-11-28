@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 /**
  * Pure tool library for this vertical MCP package.
  *
@@ -253,7 +255,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_ar_showroom",
     description:
-      "Returns a complete, compilable Kotlin composable for an AR car showroom using SceneView ARScene. Place a full-size car in your driveway, parking lot, garage, showroom floor, or street. Features include walk-around, open doors animation, color swap, real-world measurements, side-by-side comparison, photo capture, and night lighting effects. Real 1:1 scale placement with ground-plane shadows.",
+      "Returns a complete, compilable Kotlin composable for an AR car showroom using SceneView ARSceneView. Place a full-size car in your driveway, parking lot, garage, showroom floor, or street. Features include walk-around, open doors animation, color swap, real-world measurements, side-by-side comparison, photo capture, and night lighting effects. Real 1:1 scale placement with ground-plane shadows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -331,7 +333,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_ev_charging_station_viewer",
     description:
-      "Returns a complete, compilable Kotlin composable that renders a 3D EV charging station model with an overlay UI showing live charge level, available bays, and estimated time to full. Supports 5 connector types (CCS, CHAdeMO, Type 2, Tesla, J1772) and 4 station layouts (single, dual, bank, canopy). The overlay is a Material 3 card bound to live state that your app can wire to a real BLE/backend charging session. Optional AR mode uses ARScene so the station can be placed in the real world.",
+      "Returns a complete, compilable Kotlin composable that renders a 3D EV charging station model with an overlay UI showing live charge level, available bays, and estimated time to full. Supports 5 connector types (CCS, CHAdeMO, Type 2, Tesla, J1772) and 4 station layouts (single, dual, bank, canopy). The overlay is a Material 3 card bound to live state that your app can wire to a real BLE/backend charging session. Optional AR mode uses ARSceneView so the station can be placed in the real world.",
     inputSchema: {
       type: "object",
       properties: {
@@ -511,8 +513,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -560,8 +562,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -609,8 +611,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -655,7 +657,7 @@ export async function dispatchTool(
               ``,
               `**Gradle dependency:**`,
               "```kotlin",
-              `implementation("io.github.sceneview:arsceneview:4.53.0")`,
+              `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -703,8 +705,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -764,8 +766,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
-                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
+                ? `implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")`
+                : `implementation("io.github.sceneview:sceneview:${SCENEVIEW_VERSION}")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,

@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── HUD overlay code generator ───────────────────────────────────────────────
 
 export type HudElement =
@@ -74,11 +76,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberViewNodeManager
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
 /**
@@ -292,7 +292,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberViewNodeManager
@@ -310,7 +309,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {

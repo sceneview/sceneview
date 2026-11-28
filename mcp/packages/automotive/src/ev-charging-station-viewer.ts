@@ -36,7 +36,7 @@ export interface EvChargingStationViewerOptions {
  * available bays, and estimated time to full.
  *
  * The template mirrors the style of `generateCarConfigurator` and uses
- * current SceneView 3.6.x APIs: `rememberEngine`, `rememberModelLoader`,
+ * current SceneView 4.x APIs: `rememberEngine`, `rememberModelLoader`,
  * `rememberModelInstance`, `ModelNode`, `LightNode` with its `type` and the
  * named `apply` parameter, and (when ar=true) `ARSceneView`.
  */
@@ -54,9 +54,10 @@ export function generateEvChargingStationViewer(
   const modelPath = `models/ev/${layout}_${connector}_station.glb`;
 
   const sceneImports = ar
-    ? `import com.google.ar.core.Frame
+    ? `import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberOnGestureListener`
     : `import io.github.sceneview.SceneView`;
 
@@ -71,9 +72,8 @@ import io.github.sceneview.rememberOnGestureListener`
                     onSingleTapConfirmed = { e, _ ->
                         // Hit-test the tap against the latest ARCore frame
                         latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                            if (!placed && modelInstance != null) {
-                                hitResult.createAnchor()
-                                placed = true
+                            if (anchor == null && modelInstance != null) {
+                                anchor = hitResult.createAnchorOrNull()
                             }
                         }
                     }
@@ -92,7 +92,7 @@ import io.github.sceneview.rememberOnGestureListener`
             ) {`;
 
   const arState = ar
-    ? `    var placed by remember { mutableStateOf(false) }
+    ? `    var anchor by remember { mutableStateOf<Anchor?>(null) }
     // Latest ARCore frame — the tap handler hit-tests against it
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 `
@@ -122,8 +122,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 ${sceneImports}
-import io.github.sceneview.node.LightNode
-import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 ${environmentImport}import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -160,6 +158,8 @@ ${environmentLoader}
 ${arState}
     Box(modifier = Modifier.fillMaxSize()) {
         ${sceneOpen}
+${ar ? `            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {` : ""}
             // Station model — null-safe load.
             modelInstance?.let { instance ->
                 ModelNode(
@@ -187,6 +187,8 @@ ${arState}
                     direction(0.6f, -0.4f, 0.7f)
                 }
             )
+${ar ? `                }
+            }` : ""}
         }
 
         // Loading indicator while the GLB streams in.

@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateRoomPlanner, ROOM_TYPES, WALL_STYLES, FLOOR_STYLES, } from "./room-planner.js";
 describe("ROOM_TYPES", () => {
@@ -63,7 +64,7 @@ describe("generateRoomPlanner", () => {
         const code = generateRoomPlanner({ roomType: "living-room", ar: true });
         expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
         expect(code).toContain("ARSceneView(");
-        expect(code).toContain("arsceneview:4.53.0");
+        expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
         expect(code).toContain("android.permission.CAMERA");
     });
     it("AR version uses 1:10 scale", () => {

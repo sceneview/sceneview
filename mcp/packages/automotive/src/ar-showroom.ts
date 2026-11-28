@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── AR showroom code generator ───────────────────────────────────────────────
 
 export type ShowroomLocation =
@@ -63,15 +65,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
 /**
@@ -87,7 +90,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}() {
@@ -98,7 +101,7 @@ fun ${composableName}() {
 
     val carModel = rememberModelInstance(modelLoader, "models/cars/showroom_car.glb")
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 ${features.includes("color-swap") ? `
     val carColors = listOf(
         "Pearl White" to Color(0xFFF8F0E8),
@@ -116,33 +119,35 @@ ${features.includes("night-lighting") ? `    var nightMode by remember { mutable
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            planeRenderer = !placed,
+            planeRenderer = anchor == null,
             onSessionUpdated = { _, frame ->
                 // AR session active — ${location} tracking
                 latestFrame = frame
             },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { e, _ ->
-                    // Hit-test the tap against the latest ARCore frame
-                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed && carModel != null) {
-                            val anchor = hitResult.createAnchor()
-                            // Place car at the tapped ${location} location
-                            placed = true
-                        }
+                    if (anchor == null && carModel != null) {
+                        anchor = latestFrame?.hitTest(e)?.firstOrNull { hit ->
+                            val plane = hit.trackable as? Plane
+                            plane?.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                                plane.trackingState == TrackingState.TRACKING &&
+                                plane.isPoseInPolygon(hit.hitPose)
+                        }?.createAnchorOrNull()
                     }
                 }
             )
         ) {
-            // Car model at real-world scale
-            carModel?.let { instance ->
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = ${realScale ? "4.5f // Real 1:1 scale ~4.5m" : "2.0f // Table-top scale"}
-                )
-            }
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    // Car model at real-world scale
+                    carModel?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = ${realScale ? "4.5f // Real 1:1 scale ~4.5m" : "2.0f // Table-top scale"}
+                        )
+                    }
 
-${shadows ? `            // Ground shadow light
+${shadows ? `                    // Ground shadow light
             LightNode(
                 type = LightManager.Type.DIRECTIONAL,
                 apply = {
@@ -152,8 +157,8 @@ ${shadows ? `            // Ground shadow light
                 }
             )` : ""}
 ${features.includes("night-lighting") ? `
-            // Night mode accent lighting
-            if (nightMode) {
+                    // Night mode accent lighting
+                    if (nightMode) {
                 LightNode(
                     type = LightManager.Type.DIRECTIONAL,
                     apply = {
@@ -170,11 +175,13 @@ ${features.includes("night-lighting") ? `
                         direction(-1f, -0.5f, 0f)
                     }
                 )
-            }` : ""}
+                    }` : ""}
+                }
+            }
         }
 
         // ── Placement instruction ─────────────────────────────────────────
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,
@@ -191,7 +198,7 @@ ${features.includes("night-lighting") ? `
         }
 
         // ── Controls overlay ──────────────────────────────────────────────
-        if (placed) {
+        if (anchor != null) {
             ShowroomControls(
 ${features.includes("color-swap") ? `                colors = carColors,
                 selectedColor = selectedColor,

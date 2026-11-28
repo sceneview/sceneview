@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Project setup generator ──────────────────────────────────────────────────
 //
 // Emits boilerplate (build config + minimal usage snippet) to wire Rerun into an
@@ -58,7 +60,7 @@ function androidSetup(targetDir: string, includeSidecar: boolean): SetupProjectR
       contents: `// Add to your existing app/build.gradle.kts dependencies block:
 dependencies {
     // SceneView AR (required — ships the RerunBridge helper)
-    implementation("io.github.sceneview:arsceneview:4.53.0")
+    implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
 
     // Kotlin coroutines — already a transitive dep of SceneView, listed for clarity
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
@@ -131,14 +133,14 @@ function iosSetup(targetDir: string, includeSidecar: boolean): SetupProjectResul
       language: "swift",
       contents: `// Add SceneViewSwift to your Swift Package dependencies:
 dependencies: [
-    .package(url: "https://github.com/sceneview/SceneViewSwift.git", from: "3.7.0"),
+    .package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0"),
 ]
 
 // …and add the product to your target:
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "SceneViewSwift", package: "SceneViewSwift"),
+        .product(name: "SceneViewSwift", package: "sceneview"),
     ]
 )
 `,
@@ -223,8 +225,8 @@ function webSetup(targetDir: string): SetupProjectResult {
     </div>
 
     <!-- SceneView Web (Filament WASM) -->
-    <script src="https://unpkg.com/sceneview-web@3.6.2/dist/filament.js"></script>
-    <script src="https://unpkg.com/sceneview-web@3.6.2/dist/sceneview.js"></script>
+    <script src="https://unpkg.com/sceneview-web@4/dist/filament.js"></script>
+    <script src="https://unpkg.com/sceneview-web@4/dist/sceneview.js"></script>
 
     <!-- Rerun Web Viewer (WASM) -->
     <script type="module">

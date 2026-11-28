@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateSetupProject, SETUP_PLATFORMS } from "./setup-project.js";
 
@@ -22,9 +23,9 @@ describe("generateSetupProject — android", () => {
     expect(sidecar!.contents).toContain("rerun as rr");
   });
 
-  it("references arsceneview:4.53.0 in the Gradle file", () => {
+  it(`references arsceneview:${SCENEVIEW_VERSION} in the Gradle file`, () => {
     const gradle = result.files.find((f) => f.path.endsWith("build.gradle.kts"))!;
-    expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.53.0");
+    expect(gradle.contents).toContain(`io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}`);
   });
 
   it("uses rememberRerunBridge in the Kotlin composable", () => {
@@ -53,10 +54,12 @@ describe("generateSetupProject — ios", () => {
     expect(paths).toContain("myapp/YourApp/ARWithRerunView.swift");
   });
 
-  it("references SceneViewSwift 3.7.0", () => {
+  it("references the final SceneViewSwift 4.x release", () => {
     const pkg = result.files.find((f) => f.path.endsWith("Package.swift"))!;
-    expect(pkg.contents).toContain("3.7.0");
-    expect(pkg.contents).toContain("SceneViewSwift");
+    expect(pkg.contents).toContain('exact: "4.68.0"');
+    expect(pkg.contents).toContain(
+      '.product(name: "SceneViewSwift", package: "sceneview")',
+    );
   });
 
   it("uses RerunBridge and ARSceneView in the SwiftUI view", () => {

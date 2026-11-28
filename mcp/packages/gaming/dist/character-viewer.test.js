@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateCharacterViewer, CHARACTER_STYLES, ANIMATION_STATES, } from "./character-viewer.js";
 describe("CHARACTER_STYLES", () => {
@@ -56,7 +57,7 @@ describe("generateCharacterViewer", () => {
         expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
         expect(code).toContain("ARSceneView(");
         expect(code).toContain("android.permission.CAMERA");
-        expect(code).toContain("arsceneview:4.16.9");
+        expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
     });
     it("includes auto-rotate when autoRotate=true", () => {
         const code = generateCharacterViewer({ style: "humanoid", autoRotate: true });
@@ -76,10 +77,12 @@ describe("generateCharacterViewer", () => {
         const code = generateCharacterViewer({ style: "humanoid", showControls: false });
         expect(code).not.toContain("Animation Controls");
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateCharacterViewer({ style: "humanoid" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("includes three-point lighting", () => {

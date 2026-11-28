@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateLevelEditor, getThemeColors, LEVEL_THEMES, GEOMETRY_TYPES, } from "./level-editor.js";
 describe("LEVEL_THEMES", () => {
@@ -89,13 +90,16 @@ describe("generateLevelEditor", () => {
     it("generates AR code when ar=true", () => {
         const code = generateLevelEditor({ theme: "dungeon", ar: true });
         expect(code).toContain("ARSceneView(");
+        expect(code).toContain("import io.github.sceneview.math.Size");
         expect(code).toContain("android.permission.CAMERA");
-        expect(code).toContain("arsceneview:4.16.9");
+        expect(code).toContain(`arsceneview:${SCENEVIEW_VERSION}`);
     });
-    it("includes LightNode with named apply parameter", () => {
+    it("includes LightNode with its type and named apply parameter", () => {
         const code = generateLevelEditor({ theme: "forest" });
         expect(code).toContain("LightNode(");
         expect(code).toContain("apply = {");
+        expect(code).toContain("type = LightManager.Type.");
+        expect(code).toContain("import com.google.android.filament.LightManager");
         expect(code).toContain("intensity(");
     });
     it("includes block count display", () => {

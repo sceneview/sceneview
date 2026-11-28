@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -6,8 +7,8 @@ import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { LIGHT_TYPES } from "./lighting-design.js";
 import { dispatchTool } from "./tools.js";
 const modes = [
-    { mode: "3D", ar: false, artifact: "sceneview", version: "4.69.4" },
-    { mode: "AR", ar: true, artifact: "arsceneview", version: "4.69.4" },
+    { mode: "3D", ar: false, artifact: "sceneview", version: SCENEVIEW_VERSION },
+    { mode: "AR", ar: true, artifact: "arsceneview", version: SCENEVIEW_VERSION },
 ];
 function expectLightingResponse(result, { mode, ar, artifact, version }) {
     const response = CallToolResultSchema.parse(result);

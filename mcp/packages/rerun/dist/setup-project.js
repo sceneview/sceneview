@@ -1,7 +1,4 @@
-// ─── Project setup generator ──────────────────────────────────────────────────
-//
-// Emits boilerplate (build config + minimal usage snippet) to wire Rerun into an
-// existing SceneView project on Android, iOS, Web, or a standalone Python pipeline.
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 export const SETUP_PLATFORMS = ["android", "ios", "web", "python"];
 /**
  * Generates the minimum set of files a SceneView developer needs to start
@@ -31,7 +28,7 @@ function androidSetup(targetDir, includeSidecar) {
             contents: `// Add to your existing app/build.gradle.kts dependencies block:
 dependencies {
     // SceneView AR (required — ships the RerunBridge helper)
-    implementation("io.github.sceneview:arsceneview:4.16.9")
+    implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
 
     // Kotlin coroutines — already a transitive dep of SceneView, listed for clarity
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
@@ -68,8 +65,8 @@ fun ARWithRerun() {
     )
     ARSceneView(
         modifier = Modifier.fillMaxSize(),
-        onSessionUpdated = { _, frame ->
-            rerun.logFrame(frame)
+        onSessionUpdated = { session, frame ->
+            rerun.logFrame(session, frame)
         },
     )
 }
@@ -100,14 +97,14 @@ function iosSetup(targetDir, includeSidecar) {
             language: "swift",
             contents: `// Add SceneViewSwift to your Swift Package dependencies:
 dependencies: [
-    .package(url: "https://github.com/sceneview/SceneViewSwift.git", from: "3.7.0"),
+    .package(url: "https://github.com/sceneview/sceneview.git", exact: "4.68.0"),
 ]
 
 // …and add the product to your target:
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "SceneViewSwift", package: "SceneViewSwift"),
+        .product(name: "SceneViewSwift", package: "sceneview"),
     ]
 )
 `,
@@ -188,8 +185,8 @@ function webSetup(targetDir) {
     </div>
 
     <!-- SceneView Web (Filament WASM) -->
-    <script src="https://unpkg.com/sceneview-web@3.6.2/dist/filament.js"></script>
-    <script src="https://unpkg.com/sceneview-web@3.6.2/dist/sceneview.js"></script>
+    <script src="https://unpkg.com/sceneview-web@4/dist/filament.js"></script>
+    <script src="https://unpkg.com/sceneview-web@4/dist/sceneview.js"></script>
 
     <!-- Rerun Web Viewer (WASM) -->
     <script type="module">

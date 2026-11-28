@@ -48,7 +48,7 @@ describe("generateEvChargingStationViewer", () => {
     expect(code).not.toContain("ARSceneView(");
   });
 
-  it("switches to ARScene when ar=true", () => {
+  it("switches to ARSceneView when ar=true", () => {
     const code = generateEvChargingStationViewer({ ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");

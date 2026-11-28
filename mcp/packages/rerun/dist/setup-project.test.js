@@ -1,3 +1,4 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
 import { describe, it, expect } from "vitest";
 import { generateSetupProject, SETUP_PLATFORMS } from "./setup-project.js";
 describe("SETUP_PLATFORMS", () => {
@@ -17,15 +18,15 @@ describe("generateSetupProject — android", () => {
         expect(sidecar).toBeDefined();
         expect(sidecar.contents).toContain("rerun as rr");
     });
-    it("references arsceneview:4.16.9 in the Gradle file", () => {
+    it(`references arsceneview:${SCENEVIEW_VERSION} in the Gradle file`, () => {
         const gradle = result.files.find((f) => f.path.endsWith("build.gradle.kts"));
-        expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.16.9");
+        expect(gradle.contents).toContain(`io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}`);
     });
     it("uses rememberRerunBridge in the Kotlin composable", () => {
         const kt = result.files.find((f) => f.path.endsWith("ARWithRerun.kt"));
         expect(kt.contents).toContain("rememberRerunBridge");
         expect(kt.contents).toContain("onSessionUpdated");
-        expect(kt.contents).toContain("rerun.logFrame(frame)");
+        expect(kt.contents).toContain("rerun.logFrame(session, frame)");
     });
     it("omits the sidecar when includeSidecar=false", () => {
         const bare = generateSetupProject({
@@ -43,10 +44,10 @@ describe("generateSetupProject — ios", () => {
         expect(paths).toContain("myapp/Package.swift");
         expect(paths).toContain("myapp/YourApp/ARWithRerunView.swift");
     });
-    it("references SceneViewSwift 3.7.0", () => {
+    it("references the final SceneViewSwift 4.x release", () => {
         const pkg = result.files.find((f) => f.path.endsWith("Package.swift"));
-        expect(pkg.contents).toContain("3.7.0");
-        expect(pkg.contents).toContain("SceneViewSwift");
+        expect(pkg.contents).toContain('exact: "4.68.0"');
+        expect(pkg.contents).toContain('.product(name: "SceneViewSwift", package: "sceneview")');
     });
     it("uses RerunBridge and ARSceneView in the SwiftUI view", () => {
         const swift = result.files.find((f) => f.path.endsWith("ARWithRerunView.swift"));

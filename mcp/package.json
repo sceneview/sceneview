@@ -61,12 +61,13 @@
     "node": ">=18"
   },
   "scripts": {
-    "prebuild": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js",
+    "sync-vertical-versions": "node packages/shared/generate-sceneview-version.mjs",
+    "prebuild": "npm run sync-vertical-versions && node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js",
     "build": "tsc",
-    "prepare": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && tsc",
+    "prepare": "npm run sync-vertical-versions && node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && vitest run",
+    "test": "npm run sync-vertical-versions && node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && vitest run",
     "lint": "cd .. && mcp/node_modules/.bin/biome check mcp/src mcp/scripts",
     "lint:fix": "cd .. && mcp/node_modules/.bin/biome check --write mcp/src mcp/scripts",
     "deploy": "npm run build && wrangler deploy"

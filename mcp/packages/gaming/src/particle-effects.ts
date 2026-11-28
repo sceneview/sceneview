@@ -1,3 +1,5 @@
+import { SCENEVIEW_VERSION } from "./sceneview-version.js";
+
 // ─── Particle effects code generator ──────────────────────────────────────────
 
 export type ParticleEffect =
@@ -202,12 +204,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.SphereNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import kotlin.math.sin
 import kotlin.math.cos
@@ -429,9 +429,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.node.SphereNode
+import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -451,7 +452,7 @@ import io.github.sceneview.math.Position
  *   <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
  *   <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
+ * Gradle: implementation("io.github.sceneview:arsceneview:${SCENEVIEW_VERSION}")
  */
 @Composable
 fun ${composableName}AR() {
@@ -461,7 +462,7 @@ fun ${composableName}AR() {
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val materialLoader = rememberMaterialLoader(engine)
 
-    var placed by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -474,18 +475,21 @@ fun ${composableName}AR() {
                 onSingleTapConfirmed = { e, _ ->
                     // Hit-test the tap against the latest ARCore frame
                     latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
-                        if (!placed) {
-                            val anchor = hitResult.createAnchor()
-                            placed = true
+                        if (anchor == null) {
+                            anchor = hitResult.createAnchorOrNull()
                         }
                     }
                 }
             )
         ) {
-            // Particle nodes rendered here after placement
+            anchor?.let { placedAnchor ->
+                AnchorNode(anchor = placedAnchor) {
+                    SphereNode(radius = ${config.sizeStart}f)
+                }
+            }
         }
 
-        if (!placed) {
+        if (anchor == null) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = MaterialTheme.shapes.medium,
