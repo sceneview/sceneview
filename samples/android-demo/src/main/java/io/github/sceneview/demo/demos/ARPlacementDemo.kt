@@ -9,12 +9,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,13 +29,11 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
 import io.github.sceneview.demo.common.placement.PlacementChooserScreen
 import io.github.sceneview.demo.common.placement.OPENED_FILE_PLACEMENT_ROW_ID
-import io.github.sceneview.demo.common.placement.PlaceModeMemory
 import io.github.sceneview.demo.common.placement.PlacementFlowPhase
 import io.github.sceneview.demo.common.placement.PlacementModel
 import io.github.sceneview.demo.common.placement.PlacementModelSource
 import io.github.sceneview.demo.common.placement.PlacementBackAction
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
-import io.github.sceneview.demo.common.placement.placeModeArmedId
 import io.github.sceneview.demo.common.placement.placementBackAction
 import io.github.sceneview.demo.common.placement.rememberPlacementFlowState
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
@@ -109,18 +106,15 @@ import java.util.concurrent.ConcurrentHashMap
  * session with a generation ticket — the #2476 invariant, with a single call site.
  */
 @Composable
-fun ARPlacementDemo(onBack: () -> Unit, placeMemory: PlaceModeMemory? = null) {
+fun ARPlacementDemo(onBack: () -> Unit) {
     val context = LocalContext.current
     val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
 
     // Phase holder. Saveable, so a rotation in the camera does not dump the user back onto
     // the chooser.
-    // Back from Free pose or One call, the Place mode reopens on its camera with the model and
-    // the surface it had, rather than on the chooser as if the card had just been opened (#4531).
-    val flow = rememberPlacementFlowState(placeMemory?.openingPhase() ?: PlacementFlowPhase.CHOOSING)
+    val flow = rememberPlacementFlowState(PlacementFlowPhase.CHOOSING)
     var wallMode by androidx.compose.runtime.saveable.rememberSaveable {
-        val launchedOnWall = DemoSettings.consumeInitialTab() == 1
-        mutableStateOf(if (placeMemory?.visitedOtherMode == true) placeMemory.wallMode else launchedOnWall)
+        mutableStateOf(DemoSettings.consumeInitialTab() == 1)
     }
 
     // The shared session owns the placement, its anchor and the camera/plane signals. The
@@ -169,17 +163,7 @@ fun ARPlacementDemo(onBack: () -> Unit, placeMemory: PlaceModeMemory? = null) {
                 model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == requestedModel
         }
     }
-    val picker = rememberPlacementPickerState(
-        placeModeArmedId(
-            handoffId = requestedRow?.id,
-            rememberedId = placeMemory?.modelId,
-            defaultId = BUNDLED_PLACEMENT_MODELS.first().id,
-        ),
-    )
-    SideEffect {
-        placeMemory?.modelId = picker.selectedId
-        placeMemory?.wallMode = wallMode
-    }
+    val picker = rememberPlacementPickerState(requestedRow?.id ?: BUNDLED_PLACEMENT_MODELS.first().id)
     LaunchedEffect(requestedRow) {
         if (requestedRow != null) flow.enterAr()
     }

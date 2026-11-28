@@ -78,6 +78,21 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
     private var lastTouchEvent: MotionEvent? = null
 
+    /**
+     * The node a drag, twist or pinch edits when it begins on empty space, `null` to leave such a
+     * gesture to [listener] alone. `AutoPlacementScene` points it at the placed object, so one
+     * finger drags it and two fingers turn and scale it from anywhere on screen, as AR Quick Look
+     * and model-viewer do. Taps keep their empty-space meaning.
+     *
+     * Library plumbing between the gesture detector and the AR placement scene.
+     */
+    @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    @set:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    var emptySpaceEditTarget: (() -> Node?)? = null
+
+    /** The node an edit gesture begins on: the touched one, else [emptySpaceEditTarget]. */
+    private fun editTarget(): Node? = touchedNode ?: emptySpaceEditTarget?.invoke()
+
     /** Drag / twist / pinch coasting after release — see [NodeEditingInertia]. */
     private val editingInertia = NodeEditingInertia { listener }
 
@@ -231,16 +246,17 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
             override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMoveBegin(detector, e).also {
-                    moveBeginNode = touchedNode
+                    val target = editTarget()
+                    moveBeginNode = target
                     moveInProgress = true
                     // Finish any coast first: its deferred `…End` must not close the new edit.
                     editingInertia.onMoveBegin(e)
-                    val accepted = touchedNode?.onMoveBegin(detector, e) == true
+                    val accepted = target?.onMoveBegin(detector, e) == true
                     // An overridden begin handler accepts without its delegate: own it then.
                     editingInertia.moveOwner = (
-                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Move) ?: touchedNode
+                        target?.gestureDelegate?.claimedNode(NodeEditingKind.Move) ?: target
                         ).takeIf { accepted }
-                    listener?.onMoveBegin(detector, e, touchedNode)
+                    listener?.onMoveBegin(detector, e, target)
                 }
 
             override fun onMove(detector: MoveGestureDetector, e: MotionEvent) =
@@ -275,16 +291,17 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
             override fun onRotateBegin(detector: RotateGestureDetector, e: MotionEvent) =
                 super.onRotateBegin(detector, e).also {
-                    rotateBeginNode = touchedNode
+                    val target = editTarget()
+                    rotateBeginNode = target
                     rotateInProgress = true
                     // Finish any coast first: its deferred `…End` must not close the new edit.
                     editingInertia.onRotateBegin(e)
-                    val accepted = touchedNode?.onRotateBegin(detector, e) == true
+                    val accepted = target?.onRotateBegin(detector, e) == true
                     // An overridden begin handler accepts without its delegate: own it then.
                     editingInertia.rotateOwner = (
-                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Rotate) ?: touchedNode
+                        target?.gestureDelegate?.claimedNode(NodeEditingKind.Rotate) ?: target
                         ).takeIf { accepted }
-                    listener?.onRotateBegin(detector, e, touchedNode)
+                    listener?.onRotateBegin(detector, e, target)
                 }
 
             override fun onRotate(detector: RotateGestureDetector, e: MotionEvent) =
@@ -316,16 +333,17 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
             override fun onScaleBegin(detector: ScaleGestureDetector, e: MotionEvent) =
                 super.onScaleBegin(detector, e).also {
-                    scaleBeginNode = touchedNode
+                    val target = editTarget()
+                    scaleBeginNode = target
                     scaleInProgress = true
                     // Finish any coast first: its deferred `…End` must not close the new edit.
                     editingInertia.onScaleBegin(e)
-                    val accepted = touchedNode?.onScaleBegin(detector, e) == true
+                    val accepted = target?.onScaleBegin(detector, e) == true
                     // An overridden begin handler accepts without its delegate: own it then.
                     editingInertia.scaleOwner = (
-                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Scale) ?: touchedNode
+                        target?.gestureDelegate?.claimedNode(NodeEditingKind.Scale) ?: target
                         ).takeIf { accepted }
-                    listener?.onScaleBegin(detector, e, touchedNode)
+                    listener?.onScaleBegin(detector, e, target)
                 }
 
             override fun onScale(detector: ScaleGestureDetector, e: MotionEvent) =

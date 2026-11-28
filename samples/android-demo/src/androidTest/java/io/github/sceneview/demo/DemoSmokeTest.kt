@@ -151,11 +151,11 @@ class DemoSmokeTest {
         screenshot("s04_ar_placement")
     }
 
-    // Samples step 0 — `ar-pose` is the Free pose mode of `ar-placement`; the retired id
-    // proves its alias still opens that mode, whose own title stays "Pose Placement".
+    // `ar-pose` was the Free pose mode of `ar-placement`; since #5262 the demo has one
+    // placement and no modes, and the retired id proves its alias still opens it.
     @Test
     fun a05_arPose_smokeOpen() {
-        openDemoTolerant("ar-pose", "Pose Placement")
+        openDemoTolerant("ar-pose", "Tap to Place")
         screenshot("s05_ar_pose")
     }
 

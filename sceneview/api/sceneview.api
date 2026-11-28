@@ -2389,11 +2389,13 @@ public class io/github/sceneview/gesture/GestureDetector {
 	public static final field $stable I
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
 	public final fun advanceInertia (F)V
+	public final fun getEmptySpaceEditTarget ()Lkotlin/jvm/functions/Function0;
 	public final fun getListener ()Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;
 	public final fun getMoveCoastSpace ()Lio/github/sceneview/gesture/MoveCoastSpace;
 	public final fun getTouchedNode ()Lio/github/sceneview/node/Node;
 	public final fun isCoasting ()Z
 	public final fun onTouchEvent (Landroid/view/MotionEvent;Lio/github/sceneview/collision/HitResult;)V
+	public final fun setEmptySpaceEditTarget (Lkotlin/jvm/functions/Function0;)V
 	public final fun setListener (Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;)V
 	public final fun setMoveCoastSpace (Lio/github/sceneview/gesture/MoveCoastSpace;)V
 	public final fun setTouchedNode (Lio/github/sceneview/node/Node;)V

@@ -26,7 +26,6 @@ import io.github.sceneview.demo.demos.ModelViewerMode
 import io.github.sceneview.demo.demos.internal.GeospatialAnchorMode
 import io.github.sceneview.demo.fragments.ArCloudAnchorFragment
 import io.github.sceneview.demo.fragments.ArGeospatialAnchorsFragment
-import io.github.sceneview.demo.fragments.ArPlacementFragment
 import io.github.sceneview.demo.fragments.ArRerunFragment
 import io.github.sceneview.demo.fragments.ArXrFragment
 import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
@@ -186,8 +185,7 @@ internal val SAMPLE_MODES: Map<String, List<String>> = mapOf(
     "materials" to MaterialsMode.entries.map { it.analyticsMode },
     "model-viewer" to ModelViewerMode.entries.map { it.analyticsMode },
     "lighting" to LightingRig.entries.map { it.analyticsMode },
-    "ar-placement" to
-        AR_PLACEMENT_SURFACE_MODES + ArPlacementFragment.modes.drop(1).map { it.key },
+    "ar-placement" to AR_PLACEMENT_SURFACE_MODES,
     "ar-geospatial-anchors" to
         GeospatialAnchorMode.entries.map { it.analyticsMode } +
         ArGeospatialAnchorsFragment.modes.drop(1).map { it.key },

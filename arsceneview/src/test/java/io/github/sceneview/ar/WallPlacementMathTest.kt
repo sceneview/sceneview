@@ -51,6 +51,44 @@ class WallPlacementMathTest {
     }
 
     @Test
+    fun `floor drag off every polygon slides at the object's height under the finger`() {
+        // The slide a floor drag falls back on once the finger leaves every tracked polygon:
+        // the finger ray against the horizontal plane through the object's contact point.
+        val contact = Position(0.2f, -1.4f, -1.5f)
+        val up = Direction(0f, 1f, 0f)
+        val eye = Position(0f, 0f, 0f)
+        val grab = wallGrabOffset(contact, up, eye, normalize(contact - eye))!!
+        assertVecEquals(Position(0f, 0f, 0f), grab) // Grabbed at its contact point.
+        // The finger moves to a spot 4 m away on the same floor, past any detected polygon.
+        val far = Position(-1f, -1.4f, -4f)
+        val toRay = wallGrabOffset(contact, up, eye, normalize(far - eye))!!
+        val target = contact - toRay + wallTangentOffset(grab, up)
+        assertVecEquals(far, target)
+        assertEquals(contact.y, target.y, eps) // Height never follows the finger.
+        // Finger above the horizon: no floor under it, the move is refused.
+        assertNull(wallGrabOffset(contact, up, eye, normalize(Direction(0f, 0.2f, -1f))))
+        // Only a floor object slides off its polygon; a table top ends at its edge.
+        assertTrue(standsOnFloor(objectY = -1.4f, floorY = -1.42f, cameraY = 0f))
+        assertFalse(standsOnFloor(objectY = -0.7f, floorY = -1.42f, cameraY = 0f))
+        assertFalse(standsOnFloor(objectY = -1.4f, floorY = null, cameraY = 0f))
+        // Only a table tracked so far: it is the lowest plane, but 0.6 m under the phone.
+        assertFalse(standsOnFloor(objectY = -0.6f, floorY = -0.6f, cameraY = 0f))
+        assertFalse(standsOnFloor(objectY = -1.4f, floorY = -1.42f, cameraY = null))
+        // A drag reaches further than the first automatic placement, as in ARMV.
+        assertTrue(MAX_DRAG_DISTANCE_M > UsableSurfacePolicy.MAX_DISTANCE_M)
+    }
+
+    @Test
+    fun `an ambiguous low table stays polygon-bound unless the host opts in`() {
+        // Height alone cannot distinguish a 40 cm coffee table from the floor under a phone at
+        // 1.50 m. The safe default therefore keeps that ambiguous support polygon-bound.
+        assertTrue(standsOnFloor(objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+        assertFalse(AutoPlacementState().allowsOffPolygonFloorDrag)
+        assertFalse(canDragOffPolygon(false, objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+        assertTrue(canDragOffPolygon(true, objectY = 0.4f, floorY = 0.4f, cameraY = 1.5f))
+    }
+
+    @Test
     fun `wall contact survives combined twist scale and transfer to another wall`() {
         for (normal in listOf(Direction(0f, 0f, 1f), Direction(-1f, 0f, 0f),
             normalize(Direction(1f, 0.1f, -1f)))) {

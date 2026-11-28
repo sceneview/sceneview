@@ -133,6 +133,17 @@ class PlacementScaleResetTest {
         composeRule.onNodeWithTag(PlacementTestTags.SCALE_READOUT).assertIsDisplayed()
     }
 
+    @Test
+    fun `the read-out stays visible while the SDK reports an adjustment`() {
+        state.scalePercent = 100
+        state.isRealWorldSize = true
+        // TapToPlaceArSession mirrors the SDK's ADJUSTING phase as MOVING even for a pinch.
+        state.activeGesture = PlacementGesture.MOVING
+        settle(PLACEMENT_SCALE_RESET_WINDOW_MS + 1_000)
+
+        composeRule.onNodeWithTag(PlacementTestTags.SCALE_READOUT).assertIsDisplayed()
+    }
+
     private fun settle(millis: Long) {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(millis)

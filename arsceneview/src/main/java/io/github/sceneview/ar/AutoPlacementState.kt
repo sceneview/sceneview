@@ -201,6 +201,16 @@ class AutoPlacementState {
      */
     var allowsScaling: Boolean by mutableStateOf(true)
 
+    /**
+     * Let a floor placement leave the detected plane polygon while it is dragged. Off by
+     * default: until ARCore sees the real floor, its lowest upward-facing plane may be a low
+     * table, and extending that plane would leave the object floating past the table edge.
+     *
+     * Enable this only when the host's placement policy knows the support is a floor. Moving
+     * between detected polygons remains available either way.
+     */
+    var allowsOffPolygonFloorDrag: Boolean by mutableStateOf(false)
+
     /** Gesture-driven haptic events (snap, limit, invalid move); set by [ARHapticFeedback]. */
     internal var gestureHapticSink: ((io.github.sceneview.haptic.ARHapticEvent) -> Unit)? = null
     private val canManipulate: Boolean
@@ -354,6 +364,9 @@ class AutoPlacementState {
 
     /** The scene releases its placement immediately, including while AR frames are paused. */
     internal var releasePlacement: (() -> Unit)? = null
+
+    /** The placed object's gesture node: a drag, twist or pinch begun on empty space edits it. */
+    internal var editTarget: io.github.sceneview.node.Node? = null
 
     /** Gesture permission is revoked immediately on tracking loss. */
     var isSelected: Boolean by mutableStateOf(false)

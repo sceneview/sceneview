@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.common.placement
 
-import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.telemetry.AR_VIEW_SAMPLE_ID
 import io.github.sceneview.demo.telemetry.ArFunnelLog
 import io.github.sceneview.demo.telemetry.LocalSampleId
@@ -48,12 +47,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -65,33 +63,27 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.filament.Engine
-import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
-import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
-import io.github.sceneview.ar.findAutoPlacementSurface
-import io.github.sceneview.ar.AutoPlacementResult
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.ARSceneScope
-import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementSurface
-import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.rememberArGuidanceState
@@ -106,7 +98,6 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForcedTrackingFailure
-import io.github.sceneview.demo.common.motionSensorSilentForced
 import io.github.sceneview.demo.common.rememberMotionSensorSilent
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
@@ -120,7 +111,6 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberOnGestureListener
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -130,31 +120,23 @@ import java.io.File
  * the selected asset is placed on the first usable surface the camera finds — no cursor,
  * no tap, no on-screen instruction compensating for either (Quick Look parity, plan §2.1).
  *
- * The decisions — when to search, when a frame places, what a tracking loss does to a
- * placed object, when the 10 s help card opens — are [AutoPlacementController], pure and
- * JVM-tested. What "usable surface" means is [UsableSurfacePolicy]. This composable is the
- * ARCore-facing shell around both: it feeds the controller one [FrameInput] per frame,
- * creates the anchor when the controller says [FrameEffect.PLACE], and mirrors the phase
- * into [TapToPlaceState] for the overlays.
- *
- * The **interaction** model the placed object carries — drag across the surface, twist to
- * turn, and pinch against a 100 % base-size detent — lives in
- * [PlacedModelNode], and the decisions behind it in [PlacementInteraction.kt]
- * ([#3326](https://github.com/sceneview/sceneview/issues/3326)).
+ * It is the SDK's [AutoPlacementScene] — the one component every app gets — with this app's
+ * chrome around it: the coaching stack and its cards ([TapToPlaceStatusOverlays]), the AR
+ * funnel analytics and the QA hooks. Placement, the surface search, the anchor and every
+ * gesture (surface-constrained drag anywhere on screen, twist, pinch, double tap) are the SDK's;
+ * [TapToPlaceState] mirrors its phase for the overlays.
  *
  * Hosts: the AR View tab (consumer entry) and the `ar-placement` feature demo.
  *
  * @param playbackDataset ARCore MP4 replay for the device-QA harness (#1576). Defaults to
  *   the pending deep-link dataset (`null` on every real-user launch).
- * @param sessionConfiguration Extra session config, applied after the placement defaults
- *   (horizontal plane finding, instant placement off).
+ * @param sessionConfiguration Extra session config, applied after [AutoPlacementScene]'s own.
  * @param onModelPlaced Fired after a placement is committed (analytics, snackbars).
  * @param onViewIn3D The no-surface card's primary action. `null` hides the button.
  * @param onRestartSession The camera-error card's *Try again*. `null` hides the button.
  * @param overlays Coaching overlays drawn inside the session's Box, above the viewport.
  *   The default renders [TapToPlaceStatusOverlays].
- * @param extraSceneContent Extra AR-scope scene content rendered inside the same
- *   [ARSceneView].
+ * @param extraSceneContent Extra AR-scope scene content rendered inside the same scene.
  */
 @Composable
 fun TapToPlaceArSession(
@@ -179,21 +161,13 @@ fun TapToPlaceArSession(
     /** Picks the QA camera backdrop deterministically per demo (#3308). */
     backdropSeed: String = "ar-placement",
 ) {
-    // Viewport pixels: the automatic search casts its first ray through the viewport
-    // centre (§2.3), which needs the measured size — a zero viewport searches nothing.
-    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
-
-    // Planes currently tracked — one invisible ShadowReceiverPlane each, so the placed
-    // object grounds with a real contact shadow (#2241 PR 5). Always on: the plane grid
-    // and its own receiver are gone (§2.6), so there is never a second coplanar receiver.
-    var trackedPlanes by remember { mutableStateOf<List<Plane>>(emptyList()) }
-
     // §2.8: the SDK's semantic AR haptics — placement, selection, the 100 % detent,
     // scale limits, an off-surface drag, tracking loss and recovery. Opt-in, one line.
-    ARHapticFeedback(state.controller)
+    val controller = state.controller
+    ARHapticFeedback(controller)
 
-    // QA camera backdrop (#3308): translucent surface + room photo beneath it when the
-    // emulator delivers no camera frame. Inert on a device / when QA mode is off.
+    // QA camera backdrop (#3308): a room photo when the emulator delivers no camera frame.
+    // Inert on a device / when QA mode is off.
     val cameraStream = rememberARCameraStream(materialLoader)
     val qaBackdrop = rememberQaCameraBackdropActive(state.cameraReady)
 
@@ -223,185 +197,87 @@ fun TapToPlaceArSession(
             }
         }
     }
+    // The overlays read the SDK state through this holder: its phase, and whether a gesture is
+    // under way (the gesture hint leaves, the resize read-out waits for the pinch to end).
+    SideEffect {
+        if (state.phase != controller.phase) state.phase = controller.phase
+        val adjusting = if (controller.phase == PlacementPhase.ADJUSTING) PlacementGesture.MOVING else null
+        if (state.activeGesture != adjusting) state.activeGesture = adjusting
+    }
+    LaunchedEffect(controller.phase) {
+        if (controller.phase == PlacementPhase.TRACKING_LOST) {
+            state.scalePercent = null
+            state.dragOffSurface = false
+        }
+    }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .onSizeChanged { viewportSize = it },
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        // The synthetic feed belongs behind the translucent viewport. Keeping it here also leaves
+        // AutoPlacementScene's camera-permission and ARCore-availability cards above it.
         if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
-        ARSceneView(
-            lifecycle = rememberHostLifecycle(),
+
+        // The SDK's one placement component, as every app gets it (#5262): placed on the first
+        // usable surface, dragged anywhere on screen, twisted, pinched, double-tapped back to
+        // 100 %. The demo adds only its chrome around it.
+        AutoPlacementScene(
+            assetReady = state.spec != null && state.modelInstance != null,
             modifier = Modifier.fillMaxSize(),
+            state = controller,
+            // The camera stays live while the screen animates in and out of the NavHost.
+            lifecycle = rememberHostLifecycle(),
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            isOpaque = !qaCameraBackdropEnabled(),
-            surfaceType = qaCameraBackdropSurfaceType(),
-            cameraStream = if (qaBackdrop) null else cameraStream,
+            // The coaching is drawn by [overlays], which also owns the cards around it.
+            coaching = false,
+            coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             playbackDataset = playbackDataset,
-            // §2.6 — no plane fill, no reticle. The object itself is the only feedback.
-            planeRenderer = false,
-            // Upward-facing surfaces only (§2.3); walls use the separate vertical policy.
-            planeFindingMode = Config.PlaneFindingMode.HORIZONTAL,
-            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            cameraStream = if (qaBackdrop) null else cameraStream,
+            surfaceType = qaCameraBackdropSurfaceType(),
+            isOpaque = !qaCameraBackdropEnabled(),
             sessionConfiguration = sessionConfiguration,
-            // The SDK's own card, kept off the mode pill and the dock (#4509).
-            // Stands down for the pinned QA state of #4522, which an emulator can only reach
-            // from a session that could not start.
-            arCoreAvailabilityOverlay = { if (!motionSensorSilentForced()) PlacementAvailabilityOverlay(it) },
+            sceneContent = extraSceneContent,
             onSessionCreated = { funnel.sessionCreated() },
             onSessionResumed = { funnel.sessionResumed() },
             onSessionPaused = { funnel.sessionPaused() },
             onSessionFailure = { failure -> funnel.sessionFailed(failure) },
-            onSessionUpdated = { session, frame: Frame ->
+            onSessionUpdated = { _, frame: Frame ->
                 state.cameraReady = true
-                // ar_tracking_ready: the camera's own state, not the QA-shimmed one below.
+                // ar_tracking_ready: the camera's own state.
                 funnel.frameTracked(frame.camera.trackingState)
-                // The #1881 QA shim forces a tracking failure on the emulator; the
-                // controller sees it as a real loss so both surfaces rehearse the state.
-                val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
-                    ForcedTrackingFailure.override == null
+                val tracking = frame.camera.trackingState == TrackingState.TRACKING
                 if (state.isTracking != tracking) state.isTracking = tracking
-
-                // Exclude subsumed (merged) planes — ARCore can keep a subsumed plane in
-                // TRACKING with a non-null `subsumedBy`; a ShadowReceiverPlane on it
-                // double-darkens the multiplicative shadow and z-fights the quad it was
-                // merged into. Change-only write (60 Hz path).
-                val tracked = session.getAllTrackables(Plane::class.java)
-                    .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
-                if (trackedPlanes != tracked) trackedPlanes = tracked
-
-                val controller = state.controller
-                // Search only while a placement is owed: nothing is hit-tested once the
-                // object stands, and nothing before an asset is offered.
-                val surface = if (controller.wantsSurface && tracking && viewportSize != IntSize.Zero) {
-                    findAutoPlacementSurface(frame, tracked, viewportSize.width, viewportSize.height)
-                } else {
-                    null
-                }
-                val now = SystemClock.uptimeMillis()
-                var committed: AutoPlacementResult? = null
-                val effect = controller.onFrame(
-                    FrameInput(
-                        nowMillis = now,
-                        tracking = tracking,
-                        surfaceAvailable = surface != null,
-                        anchorTracking = state.placed?.anchor?.let {
-                            it.trackingState == TrackingState.TRACKING
-                        },
-                    ),
-                    commit = {
-                        if (state.modelInstance == null) false else {
-                            committed = surface?.createAnchor()
-                            committed != null
-                        }
-                    },
-                )
-                when (effect) {
-                    FrameEffect.PLACE -> {
-                        val spec = state.spec
-                        if (spec != null && committed != null) {
-                            state.placed = PlacedModel(
-                                id = state.nextId++,
-                                placement = committed!!,
-                                spec = spec,
-                            )
-                            // Open the one-shot "drag / pinch / twist" window. The
-                            // placement haptic comes from ARHapticFeedback.
-                            state.lastPlacedAtMillis = now
-                            funnel.placed()
-                            onModelPlaced?.invoke(spec)
-                        }
-                    }
-
-                    FrameEffect.TRACKING_LOST -> {
-                        state.activeGesture = null
-                        state.scalePercent = null
-                    }
-                    FrameEffect.NONE -> Unit
-                }
-                if (state.phase != controller.phase) state.phase = controller.phase
             },
             onARCoreAvailability = { state.arCoreAvailability = it },
             onTrackingFailureChanged = { reason ->
                 state.trackingFailureReason = reason
                 funnel.trackingFailureChanged(reason)
             },
-            onGestureListener = rememberOnGestureListener(
-                // A tap on the object selects it (§2.4): the SDK draws Scene Viewer's white
-                // footprint ring around it while it stays selected. A tap on empty space
-                // deselects and creates nothing; the controller documents that as a no-op
-                // rather than leaving it implicit.
-                onSingleTapConfirmed = { _, node ->
-                    if (node != null) {
-                        state.controller.selectPlacement()
-                    } else {
-                        state.controller.deselectPlacement()
-                        state.controller.onBackgroundTap()
-                    }
-                },
-                // Double-tap on the object: back to real-world size, or — already there —
-                // back to the size the user had pinched to (AR Quick Look's toggle).
-                onDoubleTap = { _, node ->
-                    if (node != null) state.controller.toggleBaseScale()
-                },
-                // Surface which gesture is active so the read-out can tell drag-to-move
-                // from twist-to-rotate from pinch-to-scale. `node == null` ⇒ the touch
-                // fell through to the background (AR has no orbit camera), so we skip it.
-                onMoveBegin = { _, _, node ->
-                    if (node != null) state.activeGesture = PlacementGesture.MOVING
-                },
-                onMoveEnd = { _, _, _ ->
-                    state.activeGesture = null
-                    state.dragOffSurface = false
-                },
-                onRotateBegin = { _, _, node ->
-                    if (node != null) state.activeGesture = PlacementGesture.ROTATING
-                },
-                onRotateEnd = { _, _, _ -> state.activeGesture = null },
-                onScaleBegin = { _, _, node ->
-                    if (node != null) state.activeGesture = PlacementGesture.SCALING
-                },
-                onScaleEnd = { _, _, _ ->
-                    state.activeGesture = null
-                    // `scalePercent` / `isRealWorldSize` are left as the last live values
-                    // from `onScaleChanged` — `TapToPlaceStatusOverlays`' own timer decides
-                    // when the read-out actually goes away (#3830: a tap-to-reset window
-                    // when the model isn't at 100 %, needs *something* to show).
-                }
-            )
-        ) {
-            // The one placement. `key(id)` gives each anchor its own node hierarchy;
-            // Reset also asks the experience to reload the disposed model instance.
-            state.placed?.let { placed ->
-                key(placed.id) {
-                    PlacedModelNode(
-                        placed = placed,
-                        modelInstance = state.modelInstance,
-                        controller = state.controller,
-                        onScaleChanged = { percent, isRealWorldSize, _ ->
-                            state.scalePercent = percent
-                            state.isRealWorldSize = isRealWorldSize
-                        },
-                        onDragOffSurface = { off ->
-                            if (state.dragOffSurface != off) state.dragOffSurface = off
-                        },
-                    )
-                }
+            onPlaced = { placement ->
+                val spec = state.spec ?: return@AutoPlacementScene
+                state.placed = PlacedModel(id = state.nextId++, placement = placement, spec = spec)
+                // Opens the one-shot "drag / pinch / twist" window. The placement haptic comes
+                // from ARHapticFeedback.
+                state.lastPlacedAtMillis = SystemClock.uptimeMillis()
+                funnel.placed()
+                onModelPlaced?.invoke(spec)
+            },
+        ) { placement ->
+            val spec = state.spec
+            if (spec != null) {
+                PlacedModelNode(
+                    placed = PlacedModel(id = 0, placement = placement, spec = spec),
+                    modelInstance = state.modelInstance,
+                    controller = controller,
+                    onScaleChanged = { percent, isRealWorldSize, _ ->
+                        state.scalePercent = percent
+                        state.isRealWorldSize = isRealWorldSize
+                    },
+                    onDragOffSurface = { off ->
+                        if (state.dragOffSurface != off) state.dragOffSurface = off
+                    },
+                )
             }
-
-            // Contact-shadow catcher per tracked plane (#2241 PR 5). The mesh renders
-            // nothing by itself (shadow_receiver.filamat, shadowMultiplier).
-            val grounded = state.phase == PlacementPhase.PLACED ||
-                state.phase == PlacementPhase.ADJUSTING
-            trackedPlanes.filter { grounded }.forEach { plane ->
-                key(plane) {
-                    ShadowReceiverPlane(plane = plane)
-                }
-            }
-
-            extraSceneContent?.invoke(this)
         }
 
         // Cover the still-black AR viewport until the first camera frame (#2484) — unless
@@ -459,7 +335,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     // a reset tap re-fires it with `isRealWorldSize = true`) and never fires while a pinch
     // is actually live, so it can never race the gesture that is still updating the number.
     LaunchedEffect(state.scalePercent, state.activeGesture, state.isRealWorldSize) {
-        if (state.scalePercent == null || state.activeGesture == PlacementGesture.SCALING) {
+        if (state.scalePercent == null || state.activeGesture != null) {
             return@LaunchedEffect
         }
         delay(if (state.isRealWorldSize) PLACEMENT_SCALE_CONFIRM_MS else PLACEMENT_SCALE_RESET_WINDOW_MS)

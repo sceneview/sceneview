@@ -17,9 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.haptic.ARHapticEvent
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -35,6 +38,7 @@ import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.isDestroyed
+import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -108,6 +112,12 @@ class AutoPlacementCandidate internal constructor(
     internal val trackable: Trackable,
     val pose: Pose,
     internal val kind: WallHitKind?,
+    /**
+     * A floor drag that left every tracked polygon: the object slides on the horizontal plane at
+     * its own height (model-viewer's WebXR drag, ARMV's `floorUnder`), anchored to the floor plane
+     * it stood on. Only a drag produces it; the first placement still needs a polygon.
+     */
+    internal val offPolygonFloor: Boolean = false,
 ) {
     internal constructor(plane: Plane, pose: Pose) : this(plane, pose, plane.wallKindOrNull())
 
@@ -140,7 +150,7 @@ class AutoPlacementCandidate internal constructor(
         if (trackable.trackingState != TrackingState.TRACKING) return false
         val plane = trackable as? Plane
         return when (kind) {
-            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            null -> plane != null && (offPolygonFloor || plane.subsumedBy == null && plane.isPoseInPolygon(target))
             WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
                 (plane.isPoseInPolygon(target) ||
                     plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
@@ -368,13 +378,50 @@ private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: P
 fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementState() }
 
 /**
- * Places content as documented by the default [AutoPlacementScene] overload, with an explicit
- * permission-recovery observer. Existing placement callback positions are unchanged.
+ * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
+ * the detected surfaces show while the object looks for one and while it moves, then fade once
+ * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
+ * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
  *
+ * [state] exposes recovery, reset and explicit request actions. Camera/capability events
+ * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
+ * same [state]. Content is composed on the main thread.
+ * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
+ *
+ * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
+ *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
+ *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
+ *   status chrome while [ArGuidanceState.isCoaching] is true either way.
+ * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
+ *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
+ *   and add their own margin. Permission and failure cards respect it even when [coaching]
+ *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
  * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
  *   receives, or `null` after a grant. A denial can precede session creation without changing
- *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
+ *   [AutoPlacementState.phase] or ARCore availability; use it when positioning host chrome.
+ * @param cameraStream the camera feed, as [ARSceneView]'s parameter of the same name — pass your
+ *   own to read or occlude with it.
+ * @param surfaceType the backing surface, as [ARSceneView]'s parameter of the same name.
+ * @param isOpaque whether the backing surface is opaque. Use `false` with
+ *   [SurfaceType.TextureSurface] to compose a camera substitute behind the viewport.
+ * @param sessionConfiguration runs after this scene has set plane finding, depth and instant
+ *   placement for [surface], as [ARSceneView]'s does: enable cloud anchors, depth, light
+ *   estimation or semantics here. Turning plane finding off stops placement.
+ * @param onSessionCreated the ARCore [Session], once created.
+ * @param onSessionResumed called after the scene's own resume handling.
+ * @param onSessionPaused the session paused (the host went to the background).
+ * @param onSessionUpdated every ARCore frame, after this scene has handled it (surface search,
+ *   placement): an exception thrown here never stops the placement.
+ * @param onSessionFailure a typed session failure; the scene has already reset its placement
+ *   when the session closed.
+ * @param lifecycle the lifecycle the AR session follows, as [ARSceneView]'s parameter of the
+ *   same name. Pass [rememberHostLifecycle] for a `NavHost` destination with transitions, so
+ *   the camera stays live while the screen animates out.
+ * @param sceneContent nodes that do not wait for the placement — a resolved cloud anchor, a
+ *   host's own markers — composed in the same scene whether or not the object stands.
  */
+@Suppress("LongParameterList")
 @Composable
 fun AutoPlacementScene(
     assetReady: Boolean,
@@ -392,7 +439,18 @@ fun AutoPlacementScene(
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
-    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)? = null,
+    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    isOpaque: Boolean = true,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    onSessionCreated: ((session: Session) -> Unit)? = null,
+    onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionPaused: ((session: Session) -> Unit)? = null,
+    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    sceneContent: (@Composable ARSceneScope.() -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
 ) {
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -430,13 +488,23 @@ fun AutoPlacementScene(
     // The surfaces are a guide here, never a shadow catcher: the contact shadow grounds the
     // object, and `groundShadows` alone decides on the real one (#5209).
     Box(modifier = modifier) {
-        CompositionLocalProvider(LocalPlaneShadowReceiver provides false) {
+        CompositionLocalProvider(
+            LocalPlaneShadowReceiver provides false,
+            // One finger drags the object, two turn and scale it, from anywhere on screen: the
+            // user never has to aim at it (AR Quick Look, model-viewer, ARMV).
+            LocalEmptySpaceEditTarget provides { state.editTarget },
+        ) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
+                surfaceType = surfaceType,
+                lifecycle = lifecycle,
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = playbackDataset,
+                cameraStream = cameraStream,
+                isOpaque = isOpaque,
+                sessionConfiguration = sessionConfiguration,
                 // The surfaces show while the object looks for one and while it moves (#5209).
                 planeRenderer = state.showsPlaneGuide && state.guide.planes,
                 planeFindingMode = autoPlacementPlaneFindingMode(surface),
@@ -462,8 +530,8 @@ fun AutoPlacementScene(
                     onSingleTapConfirmed = { _, node ->
                         if (node == null) state.deselectPlacement() else state.selectPlacement()
                     },
-                    // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
-                    onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+                    // Double-tap anywhere: back to 100 %, or back to the user's size from 100 %.
+                    onDoubleTap = { _, _ -> if (state.hasPlacement) state.toggleBaseScale() },
                 ),
                 onARCoreAvailability = {
                     availability = it
@@ -477,7 +545,11 @@ fun AutoPlacementScene(
                     trackingFailure = it
                     onTrackingFailureChanged?.invoke(it)
                 },
-                onSessionResumed = { state.cameraResumed() },
+                onSessionResumed = { resumed ->
+                    state.cameraResumed()
+                    onSessionResumed?.invoke(resumed)
+                },
+                onSessionPaused = onSessionPaused,
                 onSessionCreated = { created ->
                     (created as? io.github.sceneview.ar.arcore.ARSession)?.onClosing {
                         val previous = placement
@@ -486,7 +558,9 @@ fun AutoPlacementScene(
                         state.resetPlacement(SystemClock.uptimeMillis())
                         previous?.releaseAnchor()
                     }
+                    onSessionCreated?.invoke(created)
                 },
+                onSessionFailure = onSessionFailure,
                 onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
                 onSessionUpdated = { session, frame ->
                     val tracked = session.getAllTrackables(Plane::class.java)
@@ -505,8 +579,12 @@ fun AutoPlacementScene(
                         },
                     )
                     if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                    // Last, so a host callback that throws (ARSceneView catches and logs it) never
+                    // costs this frame its placement work.
+                    onSessionUpdated?.invoke(session, frame)
                 },
             ) {
+                sceneContent?.invoke(this)
                 placement?.let { result -> key(result) { content(result) } }
                 // The plane renderer catches no shadow here, so these are the only receivers on the
                 // planes even while the surfaces show: no double darkening (#2657).
@@ -529,28 +607,60 @@ fun AutoPlacementScene(
 }
 
 /**
- * Places once on the first usable detected plane after [assetReady]. No tap and no reticle:
- * the detected surfaces show while the object looks for one and while it moves, then fade once
- * it stands still ([AutoPlacementState.guide], #5209). Load the asset before setting [assetReady]; keep the old asset
- * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
+ * Places content as documented by the main [AutoPlacementScene] overload, with an explicit
+ * permission-recovery observer. Existing placement callback positions are unchanged.
  *
- * [state] exposes recovery, reset and explicit request actions. Camera/capability events
- * are forwarded without imposing app copy. Haptics are opt-in: call [ARHapticFeedback] with the
- * same [state]. Content is composed on the main thread.
- * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
- *
- * Callback positions and positional/trailing content retain the original API. Use the
- * permission-observer overload when host chrome depends on the permission-recovery card.
- *
- * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
- *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
- *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
- *   status chrome while [ArGuidanceState.isCoaching] is true either way.
- * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
- *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay], [ARCameraPermissionOverlay] and
- *   [ARCoreAvailabilityOverlay] as their `contentPadding`. These keep clear of the system bars
- *   and add their own margin. Permission and failure cards respect it even when [coaching]
- *   is `false`; only the animated coaching and "Surface found" pill depend on that flag.
+ * @param onCameraPermissionStateChanged the same permission-recovery state the built-in card
+ *   receives, or `null` after a grant. A denial can precede session creation without changing
+ *   [AutoPlacementState.phase] or ARCore availability; use this callback when positioning host chrome.
+ */
+@Suppress("LongParameterList")
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    onCameraPermissionStateChanged: ((ARCameraPermissionState?) -> Unit)?,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+): Unit = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = coachingContentPadding,
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    onCameraPermissionStateChanged = onCameraPermissionStateChanged,
+    // A parameter only the main overload has: with this overload's own arguments alone, Kotlin
+    // resolves the call to this overload again (fewest defaults wins) and recurses forever.
+    sceneContent = null,
+    content = content,
+)
+
+/**
+ * Places content as documented by the main [AutoPlacementScene] overload: the common case, with
+ * every callback in its original position. Pass a session hook (`sessionConfiguration`,
+ * `onSessionUpdated`, …) to reach the main overload.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -571,7 +681,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -587,7 +697,8 @@ fun AutoPlacementScene(
     onTrackingFailureChanged = onTrackingFailureChanged,
     onSessionFailed = onSessionFailed,
     onPlaced = onPlaced,
-    onCameraPermissionStateChanged = null,
+    // Only the main overload has it: without it this call resolves to this overload again.
+    sceneContent = null,
     content = content,
 )
 
@@ -617,7 +728,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -662,7 +773,7 @@ fun AutoPlacementScene(
     onSessionFailed: ((Exception) -> Unit)? = null,
     onPlaced: ((AutoPlacementResult) -> Unit)? = null,
     content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
-) = AutoPlacementScene(
+): Unit = AutoPlacementScene(
     assetReady = assetReady,
     modifier = modifier,
     state = state,
@@ -1302,7 +1413,10 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                     scaleChanged((target * 100).roundToInt(), target == 1f, target == 1f)
                 }
             }
+            // Gestures begun on empty space edit this object (twist, pinch; a drag bubbles to the anchor).
+            state.editTarget = pivot
             onDispose {
+                if (state.editTarget === pivot) state.editTarget = null
                 state.moveAction = null
                 state.rotateAction = null
                 state.scaleAction = null
@@ -1419,16 +1533,51 @@ internal fun automaticPlacementOffset(corners: List<Position>, wall: Boolean): P
     if (wall) -corners.maxOf { it.z } else -(corners.minOf { it.z } + corners.maxOf { it.z }) / 2f,
 )
 
-private fun visiblePlacementPoint(frame: Frame, pose: Pose): Boolean {
+private fun visiblePlacementPoint(
+    frame: Frame,
+    pose: Pose,
+    maxDistance: Float = UsableSurfacePolicy.MAX_DISTANCE_M,
+): Boolean {
     if (frame.camera.trackingState != TrackingState.TRACKING) return false
     val camera = frame.camera.pose
     val distance = ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz())
-    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M) return false
+    if (distance !in UsableSurfacePolicy.MIN_DISTANCE_M..maxDistance) return false
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     return ViewportProjection.project(ViewportProjection.multiply(projection, view),
         pose.tx(), pose.ty(), pose.tz())?.isInsideViewport == true
 }
+
+/**
+ * Height heuristic for a host that has explicitly enabled off-polygon floor dragging. The
+ * object must sit on the lowest tracked upward-facing plane ([floorY]), and the camera
+ * ([cameraY]) must be at least [FLOOR_BELOW_CAMERA_M] above it. Height alone cannot prove that
+ * the plane is a floor, so [AutoPlacementState.allowsOffPolygonFloorDrag] remains the policy gate.
+ */
+internal fun standsOnFloor(objectY: Float, floorY: Float?, cameraY: Float?): Boolean =
+    floorY != null && cameraY != null && objectY - floorY <= SEAM_FLOOR_TOLERANCE_M &&
+        cameraY - objectY >= FLOOR_BELOW_CAMERA_M
+
+/** Ambiguous floor inference stays polygon-bound unless the host explicitly accepts it. */
+internal fun canDragOffPolygon(
+    allowed: Boolean,
+    objectY: Float,
+    floorY: Float?,
+    cameraY: Float?,
+): Boolean = allowed && standsOnFloor(objectY, floorY, cameraY)
+
+/**
+ * A phone held by someone standing is 1.1–1.4 m above the floor and 0.4–0.9 m above a
+ * 0.75 m table (the demo's room dollhouse uses the same split).
+ */
+internal const val FLOOR_BELOW_CAMERA_M = 1.0f
+
+/**
+ * How far a floor drag may carry the object: 5 m, as ARMV (model-viewer's WebXR drag allows 10).
+ * The first automatic placement keeps [UsableSurfacePolicy.MAX_DISTANCE_M], where an error the
+ * user cannot see is the risk; a drag is under the user's eye and finger.
+ */
+internal const val MAX_DRAG_DISTANCE_M = 5f
 
 /** Keeps the logical anchor alive while dragging; only a valid finished move replaces it. */
 private class AutomaticAnchorNode(
@@ -1474,8 +1623,12 @@ private class AutomaticAnchorNode(
         if (!isTracking(frame)) return false
         val tangent = pose.rotateVector(floatArrayOf(x, 0f, if (placement.isWall) -y else y))
         val target = translated(pose, tangent)
-        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind)
-        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target)) {
+        // Same floor policy as a drag: on the floor it may leave the polygon and reach 5 m.
+        val onFloor = !placement.isWall && canDragOffPolygon(
+            state.allowsOffPolygonFloorDrag, target.ty(), state.floorHeight, state.cameraHeight,
+        )
+        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind, onFloor)
+        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target, dragDistanceLimit(target))) {
             invalidMove(true)
             return false
         }
@@ -1510,14 +1663,28 @@ private class AutomaticAnchorNode(
                 ?.let { (hit, kind) -> hitCandidate(frame, hit, kind, wallNormalOf(hit)) }
                 ?: slideAlongWall(e)
         } else {
-            hits.firstOrNull {
+            // Every surface under the finger, nearest first: the grab offset can carry the object
+            // past a table's edge while the finger is still on it, onto the floor hit behind.
+            hits.asSequence().filter {
                 val plane = it.trackable as? Plane
                 plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
                     plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
-                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
-            }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..MAX_DRAG_DISTANCE_M
+            }.map { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                .firstOrNull { it.accepts(it.pose) && visiblePlacementPoint(frame, it.pose, dragDistanceLimit(it.pose)) }
+                // Off every tracked polygon: keep sliding on the floor at the object's height
+                // instead of refusing the move (model-viewer's WebXR drag, ARMV). A table top
+                // ends at its edge: an object never floats past it.
+                ?: slideAlongWall(e, offPolygonFloor = true)
+                    ?.takeIf {
+                        canDragOffPolygon(
+                            state.allowsOffPolygonFloorDrag, pose.ty(), state.floorHeight, state.cameraHeight,
+                        )
+                    }
         }
-        if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
+        if (candidate == null || !candidate.accepts(candidate.pose) ||
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
+        ) {
             invalidMove(true)
             return false
         }
@@ -1597,7 +1764,7 @@ private class AutomaticAnchorNode(
      * The finger's ray against the wall the object stands on, treated as infinite — the only
      * drag target on a plain wall that yields no plane and no depth hit under the finger.
      */
-    private fun slideAlongWall(e: MotionEvent): AutoPlacementCandidate? {
+    private fun slideAlongWall(e: MotionEvent, offPolygonFloor: Boolean = false): AutoPlacementCandidate? {
         val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
         val axis = pose.getTransformedAxis(1, 1f)
         val normal = Float3(axis[0], axis[1], axis[2])
@@ -1609,10 +1776,14 @@ private class AutomaticAnchorNode(
             ?: toRay.also { offset = floatArrayOf(it.x, it.y, it.z) }
         val tangent = wallTangentOffset(grab, normal)
         val target = contact - toRay + tangent
+        // A floor slide anchors to the plane this drag last stood on (a drag from a table onto
+        // the floor and past it belongs to the floor), not to the plane the gesture began on.
+        val surface = pending?.takeIf { offPolygonFloor && it.kind == null }?.trackable ?: placement.trackable
         return AutoPlacementCandidate(
-            placement.trackable,
+            surface,
             Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
             placement.kind,
+            offPolygonFloor,
         )
     }
 
@@ -1628,6 +1799,15 @@ private class AutomaticAnchorNode(
         )
     }
 
+    /** A floor drag reaches [MAX_DRAG_DISTANCE_M]; a wall or a table keeps the placement range. */
+    private fun dragDistanceLimit(target: Pose) =
+        if (placement.isWall || !canDragOffPolygon(
+                state.allowsOffPolygonFloorDrag, target.ty(), state.floorHeight, state.cameraHeight,
+            )
+        ) {
+            UsableSurfacePolicy.MAX_DISTANCE_M
+        } else MAX_DRAG_DISTANCE_M
+
     private fun isTracking(frame: Frame) =
         frame.camera.trackingState == TrackingState.TRACKING &&
             trackingState == TrackingState.TRACKING
@@ -1642,7 +1822,7 @@ private class AutomaticAnchorNode(
         val candidate = pending ?: return false
         val frame = frame ?: return false
         if (trackingState != TrackingState.TRACKING ||
-            !visiblePlacementPoint(frame, candidate.pose)
+            !visiblePlacementPoint(frame, candidate.pose, dragDistanceLimit(candidate.pose))
         ) return false
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor

@@ -1904,7 +1904,11 @@ Pass the same `scene` as `SceneView(scene = …)` and drive `cameraPosition` fro
 `AutoPlacementScene` is additive: one usable detected plane consumes one placement
 request. It uses normal camera tracking, upward-facing horizontal surfaces (`SURFACE`)
 or vertical planes (`WALL`), a center ray followed by visible polygon-validated plane
-centers, and a 0.25–3 m interaction range. No reticle: the detected surfaces show
+centers, and a 0.25–3 m placement range. By default every surface drag stays inside detected
+plane polygons: the lowest plane can still be a table before ARCore sees the floor. A host that
+knows the support is a floor can set `state.allowsOffPolygonFloorDrag = true`; a drag that leaves
+every detected plane then keeps sliding at the object's height, up to 5 m away. No reticle: the
+detected surfaces show
 while the object looks for one and while it is dragged or turned, and fade 0.8 s after it
 lands (1 s after a gesture ends). The footprint ring shows 1.5 s after landing and while
 selected; `state.guide.dimensions` says when to draw dimension marks (3 s after landing,
@@ -1931,6 +1935,13 @@ AutoPlacementScene(
 // Explicit reset retains the asset and the camera session:
 // placement.resetPlacement(android.os.SystemClock.uptimeMillis())
 ```
+
+The main overload forwards `cameraStream`, `surfaceType`, `isOpaque`,
+`sessionConfiguration`, `onSessionCreated`, `onSessionResumed`, `onSessionPaused`,
+`onSessionUpdated`, `onSessionFailure`, and `lifecycle` to `ARSceneView`. Its `sceneContent`
+slot is composed whether or not automatic placement succeeds; use it for independent anchors
+or markers. For a Compose background behind the AR viewport, use
+`surfaceType = SurfaceType.TextureSurface` with `isOpaque = false`.
 
 **Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
 `ARCoachingOverlay` — the Android twin of Apple's `ARCoachingOverlayView`: a card just above

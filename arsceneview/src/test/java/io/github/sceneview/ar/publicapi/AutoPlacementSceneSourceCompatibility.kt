@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARCameraPermissionState
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.AutoPlacementResult
@@ -121,4 +122,76 @@ private fun permissionObserverWithAllPositionalCallbacksAndContent(
         true, Modifier, state, PlacementSurface.SURFACE, engine, models, materials,
         true, true, PaddingValues(0.dp), null, null, tracking, failed, placed, permission, content,
     )
+}
+
+@Composable
+private fun sessionHooksWithTrailingContent(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+    tracking: (TrackingFailureReason?) -> Unit,
+) {
+    // A session hook selects the main overload; everything else stays named and optional.
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        onTrackingFailureChanged = tracking,
+        sessionConfiguration = { _, config ->
+            config.cloudAnchorMode = com.google.ar.core.Config.CloudAnchorMode.ENABLED
+        },
+        onSessionUpdated = { _, _ -> },
+    ) { _ -> }
+}
+
+@Composable
+private fun sessionHooksWithPermissionObserver(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+    permission: (ARCameraPermissionState?) -> Unit,
+) {
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        onCameraPermissionStateChanged = permission,
+        onSessionCreated = { _ -> },
+    ) { _ -> }
+}
+
+@Composable
+private fun hostLifecycleAndPlacementFreeContent(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+) {
+    // A NavHost destination keeps the camera live through its exit transition, and a resolved
+    // cloud anchor renders before (or without) the automatic placement.
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        lifecycle = io.github.sceneview.ar.rememberHostLifecycle(),
+        sceneContent = { },
+    ) { _ -> }
+}
+
+@Composable
+private fun translucentTextureSurface(
+    engine: Engine,
+    models: ModelLoader,
+    materials: MaterialLoader,
+) {
+    AutoPlacementScene(
+        assetReady = true,
+        engine = engine,
+        modelLoader = models,
+        materialLoader = materials,
+        surfaceType = SurfaceType.TextureSurface,
+        isOpaque = false,
+    ) { _ -> }
 }
