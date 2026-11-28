@@ -5,6 +5,7 @@ import dev.romainguy.kotlin.math.lookAt
 import dev.romainguy.kotlin.math.lookTowards
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.sqrt
@@ -21,6 +22,40 @@ import kotlin.math.sqrt
  * underlying `dev.romainguy.kotlin.math` matrices directly.
  */
 class BillboardNodeMathTest {
+
+    // ── Bitmap sizing ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `width alone derives height from bitmap aspect ratio`() {
+        assertSize(
+            expectedWidth = 0.6f,
+            expectedHeight = 0.3f,
+            actual = billboardSize(400, 200, widthMeters = 0.6f, heightMeters = null)
+        )
+    }
+
+    @Test
+    fun `height alone derives width from bitmap aspect ratio`() {
+        assertSize(
+            expectedWidth = 0.6f,
+            expectedHeight = 0.3f,
+            actual = billboardSize(400, 200, widthMeters = null, heightMeters = 0.3f)
+        )
+    }
+
+    @Test
+    fun `both dimensions are used unchanged`() {
+        assertSize(
+            expectedWidth = 0.8f,
+            expectedHeight = 0.2f,
+            actual = billboardSize(400, 200, widthMeters = 0.8f, heightMeters = 0.2f)
+        )
+    }
+
+    @Test
+    fun `no dimensions keeps ImageNode normalized default`() {
+        assertNull(billboardSize(400, 200, widthMeters = null, heightMeters = null))
+    }
 
     // ── Math convention ──────────────────────────────────────────────────────────
 
@@ -108,6 +143,12 @@ class BillboardNodeMathTest {
     private fun normalized(v: Float3): Float3 {
         val len = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
         return Float3(v.x / len, v.y / len, v.z / len)
+    }
+
+    private fun assertSize(expectedWidth: Float, expectedHeight: Float, actual: Float3?) {
+        requireNotNull(actual)
+        assertEquals("width", expectedWidth.toDouble(), actual.x.toDouble(), 1e-6)
+        assertEquals("height", expectedHeight.toDouble(), actual.y.toDouble(), 1e-6)
     }
 
     private fun assertVecEquals(expected: Float3, actual: Float3, eps: Float) {

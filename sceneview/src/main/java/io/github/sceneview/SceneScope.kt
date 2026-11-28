@@ -1277,8 +1277,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * ```
      *
      * @param bitmap                 The bitmap texture to display.
-     * @param widthMeters            Quad width in meters (`null` derives from bitmap aspect ratio).
-     * @param heightMeters           Quad height in meters (`null` derives from bitmap aspect ratio).
+     * @param widthMeters            Quad width in meters. If it is the only dimension supplied,
+     *                               the height is derived from the bitmap aspect ratio.
+     * @param heightMeters           Quad height in meters. If it is the only dimension supplied,
+     *                               the width is derived from the bitmap aspect ratio. When both
+     *                               dimensions are `null`, the longer edge is 1 unit.
      * @param position               Local position.
      * @param cameraPositionProvider The camera world position to face, read every frame; `null`
      *                               (default) leaves the orientation alone. Follows recomposition:

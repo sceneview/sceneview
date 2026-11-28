@@ -5,6 +5,25 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 
+/** Resolves optional world-space dimensions while preserving the bitmap aspect ratio. */
+internal fun billboardSize(
+    bitmapWidth: Int,
+    bitmapHeight: Int,
+    widthMeters: Float?,
+    heightMeters: Float?
+): Size? = when {
+    widthMeters != null && heightMeters != null -> Size(widthMeters, heightMeters)
+    widthMeters != null -> Size(
+        widthMeters,
+        widthMeters * bitmapHeight.toFloat() / bitmapWidth.toFloat()
+    )
+    heightMeters != null -> Size(
+        heightMeters * bitmapWidth.toFloat() / bitmapHeight.toFloat(),
+        heightMeters
+    )
+    else -> null
+}
+
 /**
  * An [ImageNode] — a flat quad showing a bitmap — that can turn to face the camera.
  *
@@ -38,10 +57,11 @@ import io.github.sceneview.math.Size
  *
  * @param materialLoader         MaterialLoader used to create the image material instance.
  * @param bitmap                 The bitmap texture to display on the quad.
- * @param widthMeters            Width of the quad in world-space meters. Pass `null` to derive from
- *                               the bitmap's aspect ratio (longer edge = 1 unit).
- * @param heightMeters           Height of the quad in world-space meters. Pass `null` to derive
- *                               from the bitmap's aspect ratio.
+ * @param widthMeters            Width of the quad in world-space meters. When [heightMeters] is
+ *                               `null`, the height is derived from the bitmap's aspect ratio.
+ * @param heightMeters           Height of the quad in world-space meters. When [widthMeters] is
+ *                               `null`, the width is derived from the bitmap's aspect ratio. When
+ *                               both dimensions are `null`, the longer edge is 1 unit.
  * @param cameraPositionProvider Initial value of [BillboardNode.cameraPositionProvider]: the camera
  *                               world position to face, read every frame. `null` (default) leaves
  *                               the orientation alone.
@@ -55,7 +75,7 @@ open class BillboardNode(
 ) : ImageNode(
     materialLoader = materialLoader,
     bitmap = bitmap,
-    size = if (widthMeters != null && heightMeters != null) Size(widthMeters, heightMeters) else null
+    size = billboardSize(bitmap.width, bitmap.height, widthMeters, heightMeters)
 ) {
 
     private val cameraFacing = CameraFacing(NodeCameraFacingTarget(this), cameraPositionProvider)
@@ -96,8 +116,8 @@ open class BillboardNode(
         heightMeters: Float? = null
     ) {
         bitmap = newBitmap
-        if (widthMeters != null && heightMeters != null) {
-            updateGeometry(size = Size(widthMeters, heightMeters))
+        billboardSize(newBitmap.width, newBitmap.height, widthMeters, heightMeters)?.let {
+            updateGeometry(size = it)
         }
     }
 
